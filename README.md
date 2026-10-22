@@ -1,4 +1,10 @@
-# Crown Survivors Classic
+# Crown Survivors Mods
+
+> **This is a fork** of [hiccup-za/crown-survivors](https://github.com/hiccup-za/crown-survivors) (jakedowns/crown-survivors-mods), adding a modding/plugins layer on top of the original game. See [MODs.md](MODs.md) for what this fork adds.
+
+---
+
+# Original readme: (last updated: 2026-10-22)
 
 Static **Crown Survivors Classic** plus a Hono leaderboard API (Sign in with X, Neon Postgres), deployed as one Vercel project at [crown-survivors.vercel.app](https://crown-survivors.vercel.app).
 

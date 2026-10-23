@@ -42,3 +42,4 @@ Brainstorm of other mods that fit this fork's modding layer:
 - [ ] **Retro CRT / filter mod** — shader-style visual filters (CRT, scanlines, palette swaps)
 - [ ] **Speedrun timer mod** — splits and timers for the `fastest` leaderboard crowd
 - [ ] **Colorblind / accessibility mod** — enemy palette remapping and hit-flash intensity options
+  - [x] New mod, enabled by default: **Num key card select** — 1,2,3,4 keys instantly pick a level-up card during level up instead of mouse clicking; wraps feature in mod flag in the mod menu, enabled by default

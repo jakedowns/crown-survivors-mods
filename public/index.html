@@ -21,7 +21,7 @@ man.href='data:application/manifest+json,'+encodeURIComponent(JSON.stringify({na
 // ===== save =====
 const LB_API='/api';// same-origin leaderboard API; empty = leaderboard hidden
 const KEY='crownsurv_classic_v1';
-const DEF={gold:0,meta:{might:0,hp:0,speed:0,magnet:0,greed:0,revive:0,reroll:0,choice:0,armor:0},chars:[0],char:0,curse:0,maxCurse:0,best:0,wins:0,runs:0,kills:0,tut:false,muted:false,winsBy:{},mods:{speed:1,speedCurve:0,dash:0,walls:1,revive:1,leftHand:0,cardKeys:1}};
+const DEF={gold:0,meta:{might:0,hp:0,speed:0,magnet:0,greed:0,revive:0,reroll:0,choice:0,armor:0},chars:[0],char:0,curse:0,maxCurse:0,best:0,wins:0,runs:0,kills:0,tut:false,muted:false,winsBy:{},mods:{speed:1,speedCurve:0,dash:0,walls:1,revive:1,leftHand:0,numKeys:1}};
 let S;try{const L=JSON.parse(localStorage.getItem(KEY)||'{}');S=Object.assign({},DEF,L);S.meta=Object.assign({},DEF.meta,L.meta);S.winsBy=Object.assign({},L.winsBy);S.mods=Object.assign({},DEF.mods,L.mods)}catch(e){S=JSON.parse(JSON.stringify(DEF))}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 const md=k=>!!(S.mods&&S.mods[k]);
@@ -92,7 +92,7 @@ cv.addEventListener('pointerdown',e=>{e.preventDefault();au();if(trans)return;co
 addEventListener('pointermove',e=>{if(joy.on&&e.pointerId===joy.id){joy.x=e.clientX;joy.y=e.clientY}if(mt.on&&e.pointerId===mt.id){if(e.buttons===0)mt.on=false;else mtSet(e.clientX,e.clientY)}});
 const up=e=>{if(e.pointerId===joy.id)joy.on=false;if(e.pointerId===mt.id)mt.on=false};const mtOff=()=>{mt.on=false};addEventListener('blur',mtOff);document.documentElement.addEventListener('mouseleave',mtOff);addEventListener('pointerup',up);addEventListener('pointercancel',up);
 const keysOff=()=>{for(const k in keys)keys[k]=0};addEventListener('keydown',e=>{if(e.metaKey||e.ctrlKey||e.altKey){keysOff();return}keys[e.key.toLowerCase()]=1;if(e.key==='p'&&G&&scene==='play')G.paused=!G.paused;
- if(scene==='play'&&G&&!G.choice&&!G.paused&&!G.over&&G.revHold==null){if(e.key==='Shift'&&md('dash'))dashNow();if(e.key.toLowerCase()==='e'&&md('walls'))placeWall()}});addEventListener('keyup',e=>{const k=e.key.toLowerCase();keys[k]=0;if(k==='meta'||k==='os'||k==='control'||k==='alt')keysOff()});addEventListener('blur',keysOff);document.addEventListener('visibilitychange',()=>{if(document.hidden)keysOff()});
+ if(scene==='play'&&G&&!G.choice&&!G.paused&&!G.over&&G.revHold==null){if(e.key==='Shift'&&md('dash'))dashNow();if(e.key.toLowerCase()==='e'&&md('walls'))placeWall();if(md('numKeys')&&/^[1-4]$/.test(e.key)&&G.choice){const n=parseInt(e.key);if(n<=G.choice.cards.length){const c=G.choice.cards[n-1];G.choice.cards.splice(n-1,1);choose(c);}}}});addEventListener('keyup',e=>{const k=e.key.toLowerCase();keys[k]=0;if(k==='meta'||k==='os'||k==='control'||k==='alt')keysOff()});addEventListener('blur',keysOff);document.addEventListener('visibilitychange',()=>{if(document.hidden)keysOff()});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&scene==='play'&&G&&!G.over)G.paused=true});
 addEventListener('blur',()=>{if(scene==='play'&&G&&!G.over&&!G.auto)G.paused=true});
 // ===== helpers =====
@@ -524,7 +524,8 @@ const MDL=[{id:'speed',n:'PROPORTIONAL SPEED',d:'Move speed follows your drag di
  {id:'dash',n:'DASH POWER-UP',d:'» button or SHIFT: dash your move direction. Levels up on cards.'},
  {id:'walls',n:'WALL BUILDING',d:'▬ or E: draw a wall trail as you move.'},
  {id:'revive',n:'REVIVE DRAMA',d:'Reviving pauses the action for one dramatic beat.'},
- {id:'leftHand',n:'LEFT HAND MODE',d:'Dash/wall buttons on the lower right.'}];
+ {id:'leftHand',n:'LEFT HAND MODE',d:'Dash/wall buttons on the lower right.'},
+ {id:'numKeys',n:'NUM KEY CARD SELECT',d:'1-4 keys pick cards during level up instead of mouse.'}];
 function drawMods(){menuBg();const {px,pw}=panel(.04,.92);pix('MODS / PLUGINS',W/2,H*.04+30*U,18,'#c9a0ff',1.5);
  const rh=Math.max(66*U,(H*.92-190*U)/MDL.length);
  MDL.forEach((m,i)=>{const y=H*.04+66*U+i*rh,on=!!S.mods[m.id];rr(px+14*U,y,pw-28*U,rh-8*U,10*U,on?'#f3e2b8':'#ddd0ac',pal.ink,2);x.globalAlpha=on?1:.55;
@@ -534,6 +535,7 @@ function drawMods(){menuBg();const {px,pw}=panel(.04,.92);pix('MODS / PLUGINS',W
   else if(m.id==='dash')txt(S.mods.dash?'Level up via cards · SHIFT key + » button':'Off: no dash in your runs',px+22*U,y+rh-32*U,9,on?'#8b6a3a':'#a08a6a','left',false);
   else if(m.id==='walls')txt(S.mods.walls?'Tap ▬ / E to draw · evolve w/ Armor':'Off: no walls in your runs',px+22*U,y+rh-32*U,9,on?'#8b6a3a':'#a08a6a','left',false);
   else if(m.id==='leftHand')txt(S.mods.leftHand?'Buttons: lower right · joystick: left thumb':'Buttons: lower left (default)',px+22*U,y+rh-32*U,9,on?'#8b6a3a':'#a08a6a','left',false);
+  else if(m.id==='numKeys')txt(S.mods.numKeys?'1-4 keys pick cards':'Mouse pick cards',px+22*U,y+rh-32*U,9,on?'#8b6a3a':'#a08a6a','left',false);
   x.globalAlpha=1});
  button('BACK',W/2-60*U,H*.95-46*U,120*U,38*U,()=>{if(modsBack==='pause'&&G)G.paused=true;go(modsBack==='pause'?'play':'title')},'#8b5a2b',14)}
 // ===== leaderboard (hidden when LB_API is empty) =====

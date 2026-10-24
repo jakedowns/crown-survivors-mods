@@ -1,12 +1,7 @@
 // Crown Survivors Classic - Shared Game Core
-// This module contains the core game logic extracted from index.html
-// Both index.html and simulator.html import this
+// Single source of truth for game logic
 
-const GameCore = (function() {
-
-(() => {
-    // ===== icon/manifest =====
-    const ic = document.createElement('canvas');
+const ic = document.createElement('canvas');
     ic.width = ic.height = 180;
     const ix = ic.getContext('2d');
     ix.fillStyle = '#3b2a1a';
@@ -852,6 +847,99 @@ const GameCore = (function() {
     addEventListener('blur', () => {
       if (scene === 'play' && G && !G.over && !G.auto) G.paused = true
     });
+    
+    // ===== Simulator Communication =====
+    window.simTimeScale = 1;
+    let simAutoPlay = false;
+    let simStepMode = false;
+    
+    addEventListener('message', (event) => {
+      const msg = event.data;
+      if (!msg || !msg.type) return;
+      
+      switch (msg.type) {
+        case 'start':
+          if (scene !== 'play') {
+            scene = 'play';
+            startRun();
+          }
+          break;
+        case 'pause':
+          if (G) G.paused = true;
+          break;
+        case 'resume':
+          if (G) G.paused = false;
+          break;
+        case 'auto':
+          if (G) G.auto = msg.enabled;
+          window.simAutoPlay = msg.enabled;
+          break;
+        case 'step':
+          simStepMode = true;
+          if (G) G.paused = false;
+          break;
+        case 'setTimeScale':
+          simTimeScale = msg.scale;
+          break;
+        case 'getState':
+          sendGameState();
+          break;
+      }
+    });
+    
+    function sendGameState() {
+      if (!G) return;
+      const data = {
+        type: 'state',
+        data: {
+          running: scene === 'play',
+          paused: G.paused,
+          time: G.t,
+          level: G.lvl,
+          hp: G.p?.hp,
+          maxHp: G.p?.mhp,
+          gold: S.gold,
+          kills: G.kills,
+          bosses: G.bb,
+          damage: G.dmgDealt,
+          enemies: G.en?.length,
+          powerUps: {
+            speed: S.mods?.speedLevel,
+            dash: S.mods?.dashLevel,
+            walls: S.mods?.wallLevel,
+            revive: S.mods?.reviveLevel
+          }
+        }
+      };
+      window.parent.postMessage(data, '*');
+    }
+    
+    function sendTelemetry() {
+      if (!G || !G.p) return;
+      const data = {
+        type: 'telemetry',
+        data: {
+          totalPixels: window.simTotalPixels || 0,
+          maxTravel: window.simMaxTravel || 0,
+          maxSpeed: window.simMaxSpeed || 0,
+          maxLinger: window.simMaxLinger || 0
+        }
+      };
+      window.parent.postMessage(data, '*');
+    }
+    
+    // Initialize simulator telemetry
+    window.simTotalPixels = 0;
+    window.simMaxTravel = 0;
+    window.simMaxSpeed = 0;
+    window.simMaxLinger = 0;
+    window.simLastPos = { x: 0, y: 0 };
+    window.simLastStationary = 0;
+    window.simFramesStationary = 0;
+    
+    // Notify simulator we're ready
+    window.parent.postMessage({ type: 'ready' }, '*');
+    
     // ===== helpers =====
     const rnd = (a, b) => a + Math.random() * (b - a),
       d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
@@ -1581,7 +1669,19 @@ const GameCore = (function() {
         return
       }
       if (G.paused || G.choice) {
-        if (G.choice) G.choice.t += dt;
+        if (G.choice) {
+          G.choice.t += dt;
+          // Simulator auto-select
+          if (window.simAutoPlay && G.choice.t > 0.35) {
+            const cards = G.choice.cards;
+            if (cards && cards.length > 0) {
+              const idx = Math.floor(Math.random() * cards.length);
+              const c = cards[idx];
+              cards.splice(idx, 1);
+              choose(c);
+            }
+          }
+        }
         return
       }
       if (G.revHold) {
@@ -1668,6 +1768,24 @@ const GameCore = (function() {
         mx = v[0];
         my = v[1]
       }
+      // Simulator AI for dash/wall
+      if (window.simAutoPlay && G.dashLv > 0 && md('dash') && g.dashCd <= 0) {
+        // Dash when surrounded by enemies
+        let nearbyEnemies = 0;
+        for (const e of g.en) {
+          if (!e.dead && d2(e, p) < 120 * 120) nearbyEnemies++;
+        }
+        if (nearbyEnemies >= 3) dashNow();
+      }
+      if (window.simAutoPlay && G.wallLv > 0 && md('walls') && !g.wallDraw) {
+        // Start wall trail periodically
+        if (!window.simWallTimer) window.simWallTimer = 0;
+        window.simWallTimer += dt;
+        if (window.simWallTimer >= 8) {
+          window.simWallTimer = 0;
+          placeWall();
+        }
+      }
       if (g.dashV) {
         p.x += g.dashV.vx * dt;
         p.y += g.dashV.vy * dt;
@@ -1686,6 +1804,34 @@ const GameCore = (function() {
       p.walk += Math.hypot(mx, my) * dt * 12;
       p.inv = Math.max(0, p.inv - dt);
       p.moving = Math.hypot(mx, my) > .1;
+      
+      // Simulator telemetry
+      if (window.simTotalPixels !== undefined) {
+        const dx = p.x - window.simLastPos.x;
+        const dy = p.y - window.simLastPos.y;
+        const dist = Math.hypot(dx, dy);
+        window.simTotalPixels += dist;
+        window.simMaxTravel = Math.max(window.simMaxTravel, Math.hypot(p.x, p.y));
+        const speed = dist / dt;
+        window.simMaxSpeed = Math.max(window.simMaxSpeed, speed);
+        if (dist < 0.5) {
+          window.simFramesStationary++;
+          window.simLastStationary += dt;
+          window.simMaxLinger = Math.max(window.simMaxLinger, window.simLastStationary);
+        } else {
+          window.simLastStationary = 0;
+        }
+        window.simLastPos = { x: p.x, y: p.y };
+        
+        // Send telemetry periodically
+        if (!window.simTelemetryTimer) window.simTelemetryTimer = 0;
+        window.simTelemetryTimer += dt;
+        if (window.simTelemetryTimer >= 0.5) {
+          window.simTelemetryTimer = 0;
+          sendTelemetry();
+        }
+      }
+      
       // spawn
       if (!g.won) {
         const bt = BOSS[g.bossI];
@@ -4683,10 +4829,27 @@ const GameCore = (function() {
   }
 
   function loop(t) {
-    const dt = Math.max(0, Math.min(.05, (t - t0) / 1000));
+    let dt = Math.max(0, Math.min(.05, (t - t0) / 1000));
     t0 = t;
+    // Apply simulator time scale
+    if (window.simTimeScale && window.simTimeScale !== 1) {
+      dt *= window.simTimeScale;
+    }
+    // Handle step mode
+    if (window.simStepMode) {
+      dt = Math.min(dt, 1/60);
+      window.simStepMode = false;
+      if (G) G.paused = true;
+    }
     for (let i = 0; i < speedMul; i++) update(dt);
     draw();
+    // Send state updates periodically
+    if (!window.simStateTimer) window.simStateTimer = 0;
+    window.simStateTimer += dt;
+    if (window.simStateTimer >= 0.2) {
+      window.simStateTimer = 0;
+      sendGameState();
+    }
     requestAnimationFrame(loop)
   }
   requestAnimationFrame(loop);
@@ -5723,106 +5886,11 @@ const GameCore = (function() {
   };
 })();
 
-
-// Return public API
-return {
-  // Core functions
-  startRun,
-  endRun,
-  update,
-  draw,
-  drawWorld,
-  drawHud,
-  drawTitle,
-  drawChars,
-  drawShop,
-  drawMods,
-  drawLB,
-  drawChangelog,
-  drawQA,
-  dashNow,
-  placeWall,
-  heroS,
-  enemyS,
-  gemS,
-  fx,
-  ringFx,
-  dnum,
-  banner,
-  toast,
-  shake,
-  vib,
-  tone,
-  sfx,
-  save,
-  md,
-  cards,
-  choose,
-  openChoice,
-  openLB,
-  lbLoad,
-  lbSubmit,
-  lbSignOut,
-  lbRefreshMe,
-  lbShowRank,
-  spawnBoss,
-  killEnemy,
-  hurtEnemy,
-  nearest,
-  autopilot,
-  cardInfo,
-  icon,
-  rr,
-  txt,
-  pix,
-  fitTxt,
-  button,
-  panel,
-  menuBg,
-  shade,
-  uLbl,
-  lbChip,
-  drawOver,
-  st,
-  md,
-  META,
-  CH,
-  WP,
-  PS,
-  INF,
-  BOSS,
-  PHASE,
-  HERO_ID,
-  DEF,
-  KEY,
-  LB_API,
-  LBK,
-  get G() { return G; },
-  get S() { return S; },
-  get scene() { return scene; },
-  set scene(v) { scene = v; },
-  get clock() { return clock; },
-  get U() { return U; },
-  get W() { return W; },
-  get H() { return H; },
-  get Z() { return Z; },
-  get x() { return x; },
-  get joy() { return joy; },
-  get mt() { return mt; },
-  get keys() { return keys; },
-  get pressed() { return pressed; },
-  get uiParts() { return uiParts; },
-  get btns() { return btns; },
-  get trans() { return trans; },
-  get t0() { return t0; },
-  get speedMul() { return speedMul; }
-};
+  // Try to return public API
+  return {
+    startRun, endRun, update, draw, scene, G, S, W, H, U, Z
+  };
 })();
 
-// Export for ES modules
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = GameCore;
-}
-if (typeof window !== 'undefined') {
-  window.GameCore = GameCore;
-}
+
+export { startRun, endRun, update, draw, scene, G, S, W, H, U, Z, T, speedMul };

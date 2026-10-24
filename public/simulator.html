@@ -7,158 +7,32 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; background: #1a150d; font-family: system-ui, sans-serif; }
-    
-    .simulator-container {
-      display: flex;
-      height: 100vh;
-      width: 100vw;
-    }
-    
-    .game-pane {
-      flex: 1;
-      position: relative;
-      background: #2a1d10;
-      min-width: 0;
-    }
-    
-    .game-pane iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
-      background: #2a1d10;
-    }
-    
-    .telemetry-pane {
-      width: 380px;
-      background: #1e160e;
-      border-left: 2px solid #3d2a1a;
-      padding: 16px;
-      overflow-y: auto;
-      color: #e8d5b8;
-      font-size: 13px;
-      line-height: 1.5;
-    }
-    
-    .telemetry-pane h2 {
-      color: #e0a526;
-      margin-bottom: 16px;
-      font-size: 16px;
-      border-bottom: 1px solid #3d2a1a;
-      padding-bottom: 8px;
-    }
-    
-    .telemetry-section {
-      margin-bottom: 20px;
-    }
-    
-    .telemetry-section h3 {
-      color: #c8a060;
-      margin-bottom: 8px;
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    
-    .metric-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 4px 0;
-      border-bottom: 1px solid #2a1d10;
-    }
-    
+    .simulator-container { display: flex; height: 100vh; width: 100vw; }
+    .game-pane { flex: 1; position: relative; background: #2a1d10; min-width: 0; }
+    .game-pane iframe { width: 100%; height: 100%; border: none; }
+    .telemetry-pane { width: 380px; background: #1e160e; border-left: 2px solid #3d2a1a; padding: 16px; overflow-y: auto; color: #e8d5b8; font-size: 13px; line-height: 1.5; }
+    .telemetry-pane h2 { color: #e0a526; margin-bottom: 16px; font-size: 16px; border-bottom: 1px solid #3d2a1a; padding-bottom: 8px; }
+    .telemetry-section { margin-bottom: 20px; }
+    .telemetry-section h3 { color: #c8a060; margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .metric-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #2a1d10; }
     .metric-label { color: #a89070; }
     .metric-value { color: #ffd23f; font-weight: bold; font-family: monospace; }
-    
-    .control-panel {
-      background: #2a1d10;
-      border: 1px solid #3d2a1a;
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 16px;
-    }
-    
-    .control-panel h3 {
-      color: #e0a526;
-      margin-bottom: 10px;
-      font-size: 13px;
-    }
-    
-    .time-scale-buttons {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    
-    .time-btn {
-      padding: 6px 12px;
-      border: 1px solid #3d2a1a;
-      background: #2a1d10;
-      color: #e8d5b8;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.15s;
-    }
-    
+    .control-panel { background: #2a1d10; border: 1px solid #3d2a1a; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+    .control-panel h3 { color: #e0a526; margin-bottom: 10px; font-size: 13px; }
+    .time-scale-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+    .time-btn { padding: 6px 12px; border: 1px solid #3d2a1a; background: #2a1d10; color: #e8d5b8; border-radius: 4px; cursor: pointer; font-size: 12px; }
     .time-btn:hover { background: #3d2a1a; }
-    .time-btn.active {
-      background: #e0a526;
-      color: #1a150d;
-      border-color: #e0a526;
-      font-weight: bold;
-    }
-    
-    .btn-row {
-      display: flex;
-      gap: 8px;
-      margin-top: 10px;
-      flex-wrap: wrap;
-    }
-    
-    .sim-btn {
-      flex: 1;
-      min-width: 80px;
-      padding: 8px 12px;
-      border: 1px solid #3d2a1a;
-      background: #2a1d10;
-      color: #e8d5b8;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-    }
-    
+    .time-btn.active { background: #e0a526; color: #1a150d; border-color: #e0a526; font-weight: bold; }
+    .btn-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .sim-btn { flex: 1; min-width: 80px; padding: 8px 12px; border: 1px solid #3d2a1a; background: #2a1d10; color: #e8d5b8; border-radius: 4px; cursor: pointer; font-size: 12px; }
     .sim-btn:hover { background: #3d2a1a; }
     .sim-btn.primary { background: #5fae7a; border-color: #5fae7a; color: #1a150d; }
     .sim-btn.danger { background: #c8452f; border-color: #c8452f; color: #fff; }
-    
-    .status-indicator {
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      margin-right: 8px;
-    }
-    
+    .status-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
     .status-running { background: #5fae7a; }
     .status-paused { background: #e0a526; }
     .status-stopped { background: #c8452f; }
-    
-    .log-entry {
-      font-family: monospace;
-      font-size: 11px;
-      color: #8b7a60;
-      padding: 2px 0;
-      border-bottom: 1px solid #2a1d10;
-    }
-    
-    .log-entry.warning { color: #e0a526; }
-    .log-entry.error { color: #c8452f; }
-    .log-entry.success { color: #5fae7a; }
-    
-    @media (max-width: 1000px) {
-      .simulator-container { flex-direction: column; }
-      .telemetry-pane { width: 100%; height: 40%; min-height: 300px; }
-    }
+    .log-entry { font-family: monospace; font-size: 11px; color: #8b7a60; padding: 2px 0; border-bottom: 1px solid #2a1d10; }
   </style>
 </head>
 <body>
@@ -166,329 +40,130 @@
     <div class="game-pane">
       <iframe id="gameFrame" src="index.html"></iframe>
     </div>
-    <div class="telemetry-pane" id="telemetryPane">
+    <div class="telemetry-pane">
       <div class="control-panel">
-        <h3>⏱ Time Scale</h3>
-        <div class="time-scale-buttons" id="timeScaleButtons">
-          <button class="time-btn" data-scale="0.5">0.5×</button>
-          <button class="time-btn active" data-scale="1">1×</button>
-          <button class="time-btn" data-scale="2">2×</button>
-          <button class="time-btn" data-scale="10">10×</button>
+        <h3>Time Scale</h3>
+        <div class="time-scale-buttons">
+          <button class="time-btn" data-scale="0.5">0.5x</button>
+          <button class="time-btn active" data-scale="1">1x</button>
+          <button class="time-btn" data-scale="2">2x</button>
+          <button class="time-btn" data-scale="10">10x</button>
         </div>
         <div class="btn-row">
-          <button class="sim-btn primary" id="btnStart">▶ Start</button>
-          <button class="sim-btn" id="btnPause">⏸ Pause</button>
-          <button class="sim-btn danger" id="btnReset">⟳ Reset</button>
+          <button class="sim-btn primary" id="btnStart">Start</button>
+          <button class="sim-btn" id="btnPause">Pause</button>
+          <button class="sim-btn danger" id="btnReset">Reset</button>
         </div>
         <div class="btn-row" style="margin-top: 8px;">
-          <button class="sim-btn" id="btnAuto">🤖 Auto</button>
-          <button class="sim-btn" id="btnStep">⏭ Step</button>
+          <button class="sim-btn" id="btnAuto">Auto</button>
+          <button class="sim-btn" id="btnStep">Step</button>
         </div>
       </div>
-      
       <div class="telemetry-section">
         <h3>Run Status</h3>
-        <div class="metric-row">
-          <span class="metric-label">State</span>
-          <span class="metric-value" id="stateVal"><span class="status-indicator status-stopped"></span>Stopped</span>
-        </div>
-        <div class="metric-row">
-          <span class="metric-label">Time</span>
-          <span class="metric-value" id="timeVal">0:00</span>
-        </div>
-        <div class="metric-row">
-          <span class="metric-label">Level</span>
-          <span class="metric-value" id="levelVal">1</span>
-        </div>
-        <div class="metric-row">
-          <span class="metric-label">HP</span>
-          <span class="metric-value" id="hpVal">100/100</span>
-        </div>
-        <div class="metric-row">
-          <span class="metric-label">Gold</span>
-          <span class="metric-value" id="goldVal">0</span>
-        </div>
+        <div class="metric-row"><span class="metric-label">State</span><span class="metric-value" id="stateVal"><span class="status-indicator status-stopped"></span>Stopped</span></div>
+        <div class="metric-row"><span class="metric-label">Time</span><span class="metric-value" id="timeVal">0:00</span></div>
+        <div class="metric-row"><span class="metric-label">Level</span><span class="metric-value" id="levelVal">1</span></div>
+        <div class="metric-row"><span class="metric-label">HP</span><span class="metric-value" id="hpVal">100/100</span></div>
+        <div class="metric-row"><span class="metric-label">Gold</span><span class="metric-value" id="goldVal">0</span></div>
       </div>
-      
       <div class="telemetry-section">
         <h3>Combat</h3>
         <div class="metric-row"><span class="metric-label">Kills</span><span class="metric-value" id="killsVal">0</span></div>
         <div class="metric-row"><span class="metric-label">Bosses</span><span class="metric-value" id="bossesVal">0</span></div>
         <div class="metric-row"><span class="metric-label">Damage</span><span class="metric-value" id="dmgVal">0</span></div>
-        <div class="metric-row"><span class="metric-label">Enemies Alive</span><span class="metric-value" id="enemiesVal">0</span></div>
+        <div class="metric-row"><span class="metric-label">Enemies</span><span class="metric-value" id="enemiesVal">0</span></div>
       </div>
-      
       <div class="telemetry-section">
         <h3>Movement</h3>
-        <div class="metric-row"><span class="metric-label">Total Pixels</span><span class="metric-value" id="pixelsVal">0</span></div>
-        <div class="metric-row"><span class="metric-label">Max Distance</span><span class="metric-value" id="maxTravelVal">0</span></div>
+        <div class="metric-row"><span class="metric-label">Pixels</span><span class="metric-value" id="pixelsVal">0</span></div>
+        <div class="metric-row"><span class="metric-label">Max Dist</span><span class="metric-value" id="maxTravelVal">0</span></div>
         <div class="metric-row"><span class="metric-label">Max Speed</span><span class="metric-value" id="maxSpeedVal">0</span></div>
-        <div class="metric-row"><span class="metric-label">Stationary Time</span><span class="metric-value" id="lingerVal">0s</span></div>
+        <div class="metric-row"><span class="metric-label">Linger</span><span class="metric-value" id="lingerVal">0s</span></div>
       </div>
-      
-      <div class="telemetry-section">
-        <h3>Power-ups</h3>
-        <div class="metric-row"><span class="metric-label">Speed</span><span class="metric-value" id="puSpeed">0</span></div>
-        <div class="metric-row"><span class="metric-label">Dash</span><span class="metric-value" id="puDash">0</span></div>
-        <div class="metric-row"><span class="metric-label">Walls</span><span class="metric-value" id="puWalls">0</span></div>
-        <div class="metric-row"><span class="metric-label">Revive</span><span class="metric-value" id="puRevive">0</span></div>
-      </div>
-      
       <div class="telemetry-section">
         <h3>Event Log</h3>
-        <div id="eventLog" style="max-height: 200px; overflow-y: auto;">
-          <div class="log-entry">Simulator initialized - waiting for game...</div>
-        </div>
+        <div id="eventLog" style="max-height: 200px; overflow-y: auto;"><div class="log-entry">Simulator ready - uses shared index.html</div></div>
       </div>
     </div>
   </div>
 
   <script>
-    // Simulator state
-    const simState = {
-      running: false,
-      paused: false,
-      timeScale: 1,
-      autoPlay: false,
-      stepMode: false,
-      gameReady: false,
-      lastPos: null,
-      lastFrameTime: 0,
-      
-      // Telemetry
-      totalPixels: 0,
-      maxTravel: 0,
-      maxSpeed: 0,
-      framesStationary: 0,
-      lastStationary: 0,
-      maxLinger: 0,
-      enemiesDispatched: 0,
-      powerUpLevels: {},
-      charLevels: 0,
-    };
-    
     const frame = document.getElementById('gameFrame');
+    let simTimeScale = 1;
+    let simAutoPlay = false;
     
-    // Initialize
-    function init() {
-      // Setup time scale buttons
-      document.querySelectorAll('.time-btn').forEach(btn => {
-        btn.addEventListener('click', () => setTimeScale(parseFloat(btn.dataset.scale)));
+    // Time scale
+    document.querySelectorAll('.time-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        simTimeScale = parseFloat(btn.dataset.scale);
+        frame.contentWindow.postMessage({type:'setTimeScale', scale: simTimeScale}, '*');
+        log('Time scale: ' + simTimeScale + 'x');
       });
-      
-      // Setup control buttons
-      document.getElementById('btnStart').addEventListener('click', startSim);
-      document.getElementById('btnPause').addEventListener('click', pauseSim);
-      document.getElementById('btnReset').addEventListener('click', resetSim);
-      document.getElementById('btnAuto').addEventListener('click', toggleAuto);
-      document.getElementById('btnStep').addEventListener('click', stepFrame);
-      
-      // Listen for messages from game
-      window.addEventListener('message', handleGameMessage);
-      
-      // Wait for game to load
-      frame.addEventListener('load', () => {
-        logEvent('Game loaded');
-        // Give it a moment to initialize
-        setTimeout(() => {
-          simState.gameReady = true;
-          logEvent('Game ready');
-          // Request initial state
-          sendToGame({ type: 'getState' });
-        }, 500);
-      });
-      
-      logEvent('Simulator initialized');
-    }
+    });
     
-    function sendToGame(msg) {
-      if (frame.contentWindow) {
-        frame.contentWindow.postMessage(msg, '*');
-      }
-    }
-    
-    function handleGameMessage(event) {
-      const msg = event.data;
-      if (!msg || !msg.type) return;
-      
-      switch (msg.type) {
-        case 'state':
-          handleStateUpdate(msg.data);
-          break;
-        case 'telemetry':
-          updateTelemetryDisplay(msg.data);
-          break;
-        case 'log':
-          logEvent(msg.data);
-          break;
-        case 'ready':
-          simState.gameReady = true;
-          logEvent('Game ready');
-          break;
-      }
-    }
-    
-    function setTimeScale(scale) {
-      simState.timeScale = scale;
-      document.querySelectorAll('.time-btn').forEach(btn => {
-        btn.classList.toggle('active', parseFloat(btn.dataset.scale) === scale);
-      });
-      sendToGame({ type: 'setTimeScale', scale });
-      logEvent(`Time scale: ${scale}×`);
-    }
-    
-    function startSim() {
-      if (!simState.running) {
-        simState.running = true;
-        simState.paused = false;
-        sendToGame({ type: 'start' });
-        updateStatus('running');
-        logEvent('Run started');
-      } else if (simState.paused) {
-        simState.paused = false;
-        sendToGame({ type: 'resume' });
-        updateStatus('running');
-        logEvent('Resumed');
-      }
-    }
-    
-    function pauseSim() {
-      if (simState.running && !simState.paused) {
-        simState.paused = true;
-        sendToGame({ type: 'pause' });
-        updateStatus('paused');
-        logEvent('Paused');
-      }
-    }
-    
-    function resetSim() {
-      simState.running = false;
-      simState.paused = false;
-      simState.autoPlay = false;
-      simState.timeScale = 1;
-      setTimeScale(1);
-      
-      // Reset telemetry
-      simState.totalPixels = 0;
-      simState.maxTravel = 0;
-      simState.maxSpeed = 0;
-      simState.framesStationary = 0;
-      simState.lastStationary = 0;
-      simState.maxLinger = 0;
-      simState.enemiesDispatched = 0;
-      simState.powerUpLevels = {};
-      simState.charLevels = 0;
-      
-      // Reload iframe to fully reset game
+    // Controls
+    document.getElementById('btnStart').addEventListener('click', () => {
+      frame.contentWindow.postMessage({type:'start'}, '*');
+      updateStatus('running');
+      log('Started');
+    });
+    document.getElementById('btnPause').addEventListener('click', () => {
+      frame.contentWindow.postMessage({type:'pause'}, '*');
+      updateStatus('paused');
+      log('Paused');
+    });
+    document.getElementById('btnReset').addEventListener('click', () => {
       frame.src = frame.src;
-      logEvent('Reset');
-    }
+      log('Reset');
+    });
+    document.getElementById('btnAuto').addEventListener('click', () => {
+      simAutoPlay = !simAutoPlay;
+      document.getElementById('btnAuto').classList.toggle('primary', simAutoPlay);
+      frame.contentWindow.postMessage({type:'auto', enabled: simAutoPlay}, '*');
+      log(simAutoPlay ? 'Auto ON' : 'Auto OFF');
+    });
+    document.getElementById('btnStep').addEventListener('click', () => {
+      frame.contentWindow.postMessage({type:'step'}, '*');
+      log('Step');
+    });
     
-    function toggleAuto() {
-      simState.autoPlay = !simState.autoPlay;
-      sendToGame({ type: 'auto', enabled: simState.autoPlay });
-      document.getElementById('btnAuto').textContent = simState.autoPlay ? '🤖 Auto ON' : '🤖 Auto';
-      document.getElementById('btnAuto').classList.toggle('primary', simState.autoPlay);
-      logEvent(simState.autoPlay ? 'Auto-play enabled' : 'Auto-play disabled');
-    }
-    
-    function stepFrame() {
-      if (!simState.running) {
-        startSim();
+    // Listen for messages
+    window.addEventListener('message', (e) => {
+      const msg = e.data;
+      if (!msg || !msg.type) return;
+      if (msg.type === 'state') {
+        const d = msg.data;
+        if (d.time !== undefined) document.getElementById('timeVal').textContent = Math.floor(d.time/60)+':'+String(Math.floor(d.time%60)).padStart(2,'0');
+        if (d.level !== undefined) document.getElementById('levelVal').textContent = d.level;
+        if (d.hp !== undefined && d.maxHp !== undefined) document.getElementById('hpVal').textContent = Math.floor(d.hp)+'/'+Math.floor(d.maxHp);
+        if (d.gold !== undefined) document.getElementById('goldVal').textContent = d.gold;
+        if (d.kills !== undefined) document.getElementById('killsVal').textContent = d.kills;
+        if (d.bosses !== undefined) document.getElementById('bossesVal').textContent = d.bosses;
+        if (d.enemies !== undefined) document.getElementById('enemiesVal').textContent = d.enemies;
       }
-      simState.stepMode = true;
-      sendToGame({ type: 'step' });
-    }
+      if (msg.type === 'log') log(msg.data);
+    });
     
-    function updateStatus(state) {
+    function updateStatus(s) {
       const el = document.getElementById('stateVal');
-      const indicator = el.querySelector('.status-indicator');
-      indicator.className = 'status-indicator status-' + state;
-      el.innerHTML = indicator.outerHTML + state.charAt(0).toUpperCase() + state.slice(1);
+      el.innerHTML = '<span class="status-indicator status-' + s + '"></span>' + s.charAt(0).toUpperCase() + s.slice(1);
+    }
+    function log(m) {
+      const logEl = document.getElementById('eventLog');
+      const e = document.createElement('div');
+      e.className = 'log-entry';
+      e.textContent = '[' + new Date().toLocaleTimeString() + '] ' + m;
+      logEl.insertBefore(e, logEl.firstChild);
+      while (logEl.children.length > 50) logEl.removeChild(logEl.lastChild);
     }
     
-    function logEvent(msg) {
-      const log = document.getElementById('eventLog');
-      const entry = document.createElement('div');
-      entry.className = 'log-entry';
-      entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-      log.insertBefore(entry, log.firstChild);
-      while (log.children.length > 50) log.removeChild(log.lastChild);
-    }
-    
-    function formatTime(seconds) {
-      const m = Math.floor(seconds / 60);
-      const s = Math.floor(seconds % 60).toString().padStart(2, '0');
-      return `${m}:${s}`;
-    }
-    
-    function handleStateUpdate(data) {
-      if (data.running !== undefined) {
-        simState.running = data.running;
-      }
-      if (data.paused !== undefined) {
-        simState.paused = data.paused;
-        updateStatus(data.paused ? 'paused' : 'running');
-      }
-      if (data.time !== undefined) {
-        document.getElementById('timeVal').textContent = formatTime(data.time);
-      }
-      if (data.level !== undefined) {
-        document.getElementById('levelVal').textContent = data.level;
-      }
-      if (data.hp !== undefined && data.maxHp !== undefined) {
-        document.getElementById('hpVal').textContent = `${Math.floor(data.hp)}/${Math.floor(data.maxHp)}`;
-      }
-      if (data.gold !== undefined) {
-        document.getElementById('goldVal').textContent = data.gold;
-      }
-      if (data.kills !== undefined) {
-        document.getElementById('killsVal').textContent = data.kills;
-      }
-      if (data.bosses !== undefined) {
-        document.getElementById('bossesVal').textContent = data.bosses;
-      }
-      if (data.damage !== undefined) {
-        document.getElementById('dmgVal').textContent = Math.floor(data.damage);
-      }
-      if (data.enemies !== undefined) {
-        document.getElementById('enemiesVal').textContent = data.enemies;
-      }
-      if (data.powerUps !== undefined) {
-        document.getElementById('puSpeed').textContent = data.powerUps.speed || 0;
-        document.getElementById('puDash').textContent = data.powerUps.dash || 0;
-        document.getElementById('puWalls').textContent = data.powerUps.walls || 0;
-        document.getElementById('puRevive').textContent = data.powerUps.revive || 0;
-      }
-    }
-    
-    function updateTelemetryDisplay(data) {
-      if (data.totalPixels !== undefined) {
-        simState.totalPixels = data.totalPixels;
-        document.getElementById('pixelsVal').textContent = Math.floor(data.totalPixels).toLocaleString();
-      }
-      if (data.maxTravel !== undefined) {
-        simState.maxTravel = data.maxTravel;
-        document.getElementById('maxTravelVal').textContent = Math.floor(data.maxTravel).toLocaleString();
-      }
-      if (data.maxSpeed !== undefined) {
-        simState.maxSpeed = data.maxSpeed;
-        document.getElementById('maxSpeedVal').textContent = data.maxSpeed.toFixed(1);
-      }
-      if (data.maxLinger !== undefined) {
-        simState.maxLinger = data.maxLinger;
-        document.getElementById('lingerVal').textContent = data.maxLinger.toFixed(1) + 's';
-      }
-    }
-    
-    function formatTime(seconds) {
-      const m = Math.floor(seconds / 60);
-      const s = Math.floor(seconds % 60).toString().padStart(2, '0');
-      return `${m}:${s}`;
-    }
-    
-    // Start
-    init();
+    frame.addEventListener('load', () => {
+      log('Game loaded - shared module');
+      frame.contentWindow.postMessage({type:'getState'}, '*');
+    });
   </script>
 </body>
 </html>

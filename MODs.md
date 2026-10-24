@@ -1,5 +1,16 @@
 # MODs (jakedowns/crown-survivors-mods)
 
+
+## TODOs:
+
+- [x] add keyboard up/down arrow support for highlighting and shift||return key to select on all menus (accessibility/alt keyboard only usage, doesn't require mouse/touch input)
+
+- [x] [agent no. 3]: implemented new mod: tap shift to dash, hold shift to use wall draw (+ 2x all wall draw max draw + durability to make it feel more substantial/meaningful (buff))
+
+- [ ] fix: make sure dash goes in the direction you were last going in, add a slight "skid" post-dash based on impulse force applied.
+
+- [ ] todo: add STATs.md that lists player leveling, ability leveling, enemy descriptions, all numerical stats used in constants / multipliers / dmg / hp / etc for quick reference / understanding by new players / contributors (we'll make sure to keep it in sync with real values in code somehow...)
+
 This fork adds a lightweight **modding / plugins layer** to Crown Survivors Classic. Mods are self-contained gameplay tweaks and additions that can be toggled from a new **"Mods / Plugins"** option in the GUI — no engine changes needed to ship a new mod. Several mods ship **enabled by default** on this fork (flagged below).
 
 > Status: all core mods implemented (`public/index.html`). Toggles persist in the save; dash & wall levels apply from your next run.
@@ -15,8 +26,8 @@ This fork adds a lightweight **modding / plugins layer** to Crown Survivors Clas
 ## Implementation notes
 
 - Mods live in the save (`S.mods`): `speed` (w/ `speedCurve`: linear|responsive), `dash`, `walls`, `revive`. Defaults: speed on, walls on, revive drama on, dash off.
-- **Dash**: `»` HUD button or `Shift`; dash along last move direction, brief invuln + cooldown; upgrades = distance/speed/cooldown. Camera zooms out (FOV) while dashing.
-- **Walls**: `▬` HUD button or `E`; wall spawns in front of you, perpendicular to movement. Ground enemies are blocked and slide along/chew walls; fliers (bats, harpies) cross short walls; ghosts & wisps phase through everything; bosses crush walls. At Lv5 with the Armor passive, walls evolve into **Radiant Walls** (lasers): burn ground AND air, bosses take heavily reduced laser damage.
+- **Dash**: `»` HUD button or `Shift` (tap); dash along last move direction, brief invuln + cooldown; upgrades = distance/speed/cooldown. Camera zooms out (FOV) while dashing.
+- **Walls**: `▬` HUD button or `E` / `Shift` (hold); wall trail draws behind player. **New unified control: tap Shift to dash, hold Shift (≥200ms) to toggle wall draw.** Leveling increases max wall count and wall duration/durability. **v0.1.2 buff: 2× max walls at all levels, 2× wall HP/durability** — walls feel more substantial. Enemy interaction: ground enemies blocked/slide; fliers (bats, harpies) cross short walls; ghosts & wisps phase through; bosses crush walls. At Lv5 + Armor passive → **Radiant Walls** (lasers): burn ground AND air, bosses take heavily reduced laser damage.
 - **Revive drama**: action freezes ~2.4s with dimming overlay, expanding ring, particle burst and dramatic chord; `p`-style banner fallback when the mod is off.
 
 ## Tasklist

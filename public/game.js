@@ -800,8 +800,14 @@
       }
       keys[e.key.toLowerCase()] = 1;
       if (e.key === 'p' && G && scene === 'play') G.paused = !G.paused;
+      // Track Shift press time for tap vs hold detection
+      if (e.key === 'Shift') {
+        keys.shiftPressTime = performance.now();
+      }
       if (scene === 'play' && G && !G.choice && !G.paused && !G.over && G.revHold == null) {
-        if (e.key === 'Shift' && md('dash')) dashNow();
+        // Dash on Shift keydown only if dash is enabled but walls mod is OFF (legacy behavior)
+        // If walls mod is ON, we handle tap/hold in keyup
+        if (e.key === 'Shift' && md('dash') && !md('walls')) dashNow();
         if (e.key.toLowerCase() === 'e' && md('walls')) placeWall();
         if (md('numKeys') && /^[1-4]$/.test(e.key) && G.choice) {
           const n = parseInt(e.key);
@@ -835,6 +841,20 @@
     addEventListener('keyup', e => {
       const k = e.key.toLowerCase();
       keys[k] = 0;
+      // Handle Shift tap vs hold: tap = dash, hold = toggle wall draw
+      if (k === 'shift' && keys.shiftPressTime) {
+        const held = performance.now() - keys.shiftPressTime;
+        if (scene === 'play' && G && !G.choice && !G.paused && !G.over && G.revHold == null) {
+          if (held < 200) {
+            // Tap: dash
+            if (md('dash')) dashNow();
+          } else {
+            // Hold: toggle wall draw (if walls mod enabled)
+            if (md('walls')) placeWall();
+          }
+        }
+        keys.shiftPressTime = 0;
+      }
       if (k === 'meta' || k === 'os' || k === 'control' || k === 'alt') keysOff()
     });
     addEventListener('blur', keysOff);
@@ -2218,7 +2238,8 @@
     const WG = 24;
 
     function wallCap() {
-      return [3, 4, 5, 6, 7][Math.max(1, G.wallLv) - 1] + (G.wallEvo ? 2 : 0)
+      // 2× max walls for the new mod (tap Shift=dash, hold Shift=wall draw)
+      return ([3, 4, 5, 6, 7][Math.max(1, G.wallLv) - 1] + (G.wallEvo ? 2 : 0)) * 2;
     }
 
     function placeWall() {
@@ -2272,7 +2293,7 @@
         tone(120, .15, 'square', .05, -40);
         return false;
       }
-      const hp = g.wallEvo ? 220 : 16 + 12 * lv;
+      const hp = g.wallEvo ? 440 : (16 + 12 * lv) * 2;
       g.walls.push({
         x1,
         y1,
@@ -4931,6 +4952,9 @@
 
   // ===== changelog screen =====
   const CHANGELOG = [{
+    v: '0.1.2',
+    d: 'New mod: Tap Shift to dash, hold Shift for wall draw. 2× wall max count & durability buff. Accessibility: arrow keys + Enter/Shift for all menus.'
+  }, {
     v: '0.1.1',
     d: 'Bugfixes and balance updates: fixed dash timer decrement, wall button overlap, shop button syntax, added disableTracking feature.'
   }];
@@ -4956,7 +4980,7 @@
       scene = 'title';
       sfx.click()
     }, '#8b5a2b', 11);
-    txt('v0.1.1 - Initial release', W / 2, H * .95 - 20 * U, 11, pal.paper, 'center', false)
+    txt('v0.1.2 - Tap Shift=Dash, Hold Shift=Wall Draw (2× walls)', W / 2, H * .95 - 20 * U, 11, pal.paper, 'center', false)
   }
   FONT['#'] = [10, 31, 10, 31, 10];
   const LBK = 'crownsurv_classic_lb', HERO_ID = CH.map(c => c.n.toLowerCase().replace(/ /g, '-'));

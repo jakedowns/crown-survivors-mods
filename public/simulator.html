@@ -2,168 +2,316 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <title>Crown Survivors - Simulator</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Crown Survivors - Multi-Simulator</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: 100%; overflow: hidden; background: #1a150d; font-family: system-ui, sans-serif; }
-    .simulator-container { display: flex; height: 100vh; width: 100vw; }
-    .game-pane { flex: 1; position: relative; background: #2a1d10; min-width: 0; }
-    .game-pane iframe { width: 100%; height: 100%; border: none; }
-    .telemetry-pane { width: 380px; background: #1e160e; border-left: 2px solid #3d2a1a; padding: 16px; overflow-y: auto; color: #e8d5b8; font-size: 13px; line-height: 1.5; }
-    .telemetry-pane h2 { color: #e0a526; margin-bottom: 16px; font-size: 16px; border-bottom: 1px solid #3d2a1a; padding-bottom: 8px; }
-    .telemetry-section { margin-bottom: 20px; }
-    .telemetry-section h3 { color: #c8a060; margin-bottom: 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .metric-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #2a1d10; }
-    .metric-label { color: #a89070; }
-    .metric-value { color: #ffd23f; font-weight: bold; font-family: monospace; }
-    .control-panel { background: #2a1d10; border: 1px solid #3d2a1a; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
-    .control-panel h3 { color: #e0a526; margin-bottom: 10px; font-size: 13px; }
-    .time-scale-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
-    .time-btn { padding: 6px 12px; border: 1px solid #3d2a1a; background: #2a1d10; color: #e8d5b8; border-radius: 4px; cursor: pointer; font-size: 12px; }
-    .time-btn:hover { background: #3d2a1a; }
-    .time-btn.active { background: #e0a526; color: #1a150d; border-color: #e0a526; font-weight: bold; }
-    .btn-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
-    .sim-btn { flex: 1; min-width: 80px; padding: 8px 12px; border: 1px solid #3d2a1a; background: #2a1d10; color: #e8d5b8; border-radius: 4px; cursor: pointer; font-size: 12px; }
-    .sim-btn:hover { background: #3d2a1a; }
-    .sim-btn.primary { background: #5fae7a; border-color: #5fae7a; color: #1a150d; }
-    .sim-btn.danger { background: #c8452f; border-color: #c8452f; color: #fff; }
-    .status-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
-    .status-running { background: #5fae7a; }
-    .status-paused { background: #e0a526; }
-    .status-stopped { background: #c8452f; }
-    .log-entry { font-family: monospace; font-size: 11px; color: #8b7a60; padding: 2px 0; border-bottom: 1px solid #2a1d10; }
+    html, body { height: 100%; background: #1a150d; font-family: system-ui, sans-serif; color: #e8d5b8; }
+    .header { background: #2a1d10; border-bottom: 2px solid #3d2a1a; padding: 12px 20px; display: flex; align-items: center; gap: 20px; }
+    .header h1 { color: #e0a526; font-size: 18px; flex: 1; }
+    .header-controls { display: flex; gap: 8px; align-items: center; }
+    .btn { padding: 8px 16px; border: 1px solid #3d2a1a; background: #2a1d10; color: #e8d5b8; border-radius: 4px; cursor: pointer; font-size: 12px; }
+    .btn:hover { background: #3d2a1a; }
+    .btn.primary { background: #5fae7a; border-color: #5fae7a; color: #1a150d; }
+    .btn.danger { background: #c8452f; border-color: #c8452f; color: #fff; }
+    .main { display: flex; height: calc(100vh - 60px); }
+    .sim-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 4px; background: #3d2a1a; padding: 4px; }
+    .sim-instance { background: #2a1d10; position: relative; display: flex; flex-direction: column; }
+    .sim-instance-header { background: #1e160e; padding: 6px 10px; display: flex; align-items: center; gap: 10px; font-size: 11px; border-bottom: 1px solid #3d2a1a; }
+    .sim-instance-name { color: #e0a526; flex: 1; font-weight: bold; }
+    .sim-status { display: flex; align-items: center; gap: 4px; }
+    .sim-dot { width: 6px; height: 6px; border-radius: 50%; }
+    .sim-dot.running { background: #5fae7a; }
+    .sim-dot.paused { background: #e0a526; }
+    .sim-dot.stopped { background: #c8452f; }
+    .sim-iframe { flex: 1; border: none; width: 100%; background: #2a1d10; }
+    .telemetry-panel { width: 450px; background: #1e160e; border-left: 2px solid #3d2a1a; overflow-y: auto; }
+    .panel-header { background: #2a1d10; padding: 12px 16px; border-bottom: 1px solid #3d2a1a; }
+    .panel-header h2 { color: #e0a526; font-size: 14px; }
+    .panel-section { padding: 12px 16px; border-bottom: 1px solid #2a1d10; }
+    .panel-section h3 { color: #c8a060; font-size: 12px; margin-bottom: 10px; text-transform: uppercase; }
+    .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .metric-card { background: #2a1d10; padding: 8px; border-radius: 4px; border: 1px solid #3d2a1a; }
+    .metric-card-label { color: #a89070; font-size: 10px; }
+    .metric-card-value { color: #ffd23f; font-weight: bold; font-family: monospace; font-size: 14px; }
+    .graph-container { height: 120px; background: #2a1d10; border: 1px solid #3d2a1a; border-radius: 4px; position: relative; overflow: hidden; }
+    .graph-canvas { width: 100%; height: 100%; }
+    .log-panel { max-height: 200px; overflow-y: auto; }
+    .log-entry { font-family: monospace; font-size: 10px; color: #8b7a60; padding: 3px 0; border-bottom: 1px solid #2a1d10; }
+    .log-entry.success { color: #5fae7a; }
+    .log-entry.warning { color: #e0a526; }
+    .log-entry.error { color: #c8452f; }
   </style>
 </head>
 <body>
-  <div class="simulator-container">
-    <div class="game-pane">
-      <iframe id="gameFrame" src="index.html"></iframe>
+  <div class="header">
+    <h1>⚔️ Crown Survivors - Multi-Instance Simulator</h1>
+    <div class="header-controls">
+      <label style="font-size: 12px;">Time Scale:</label>
+      <select id="globalTimeScale" class="btn" style="padding: 6px 10px;">
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+        <option value="4">4x</option>
+        <option value="10">10x</option>
+      </select>
+      <button class="btn primary" id="btnStartAll">▶ Start All</button>
+      <button class="btn" id="btnPauseAll">⏸ Pause All</button>
+      <button class="btn" id="btnAutoAll">🤖 Auto All</button>
+      <button class="btn danger" id="btnResetAll">⟳ Reset All</button>
+      <button class="btn" id="btnExport">📊 Export Data</button>
     </div>
-    <div class="telemetry-pane">
-      <div class="control-panel">
-        <h3>Time Scale</h3>
-        <div class="time-scale-buttons">
-          <button class="time-btn" data-scale="0.5">0.5x</button>
-          <button class="time-btn active" data-scale="1">1x</button>
-          <button class="time-btn" data-scale="2">2x</button>
-          <button class="time-btn" data-scale="10">10x</button>
+  </div>
+  <div class="main">
+    <div class="sim-grid">
+      <div class="sim-instance" data-instance="0">
+        <div class="sim-instance-header">
+          <span class="sim-instance-name">Instance A</span>
+          <span class="sim-status"><span class="sim-dot stopped"></span>Stopped</span>
         </div>
-        <div class="btn-row">
-          <button class="sim-btn primary" id="btnStart">Start</button>
-          <button class="sim-btn" id="btnPause">Pause</button>
-          <button class="sim-btn danger" id="btnReset">Reset</button>
+        <iframe class="sim-iframe" src="index.html"></iframe>
+      </div>
+      <div class="sim-instance" data-instance="1">
+        <div class="sim-instance-header">
+          <span class="sim-instance-name">Instance B</span>
+          <span class="sim-status"><span class="sim-dot stopped"></span>Stopped</span>
         </div>
-        <div class="btn-row" style="margin-top: 8px;">
-          <button class="sim-btn" id="btnAuto">Auto</button>
-          <button class="sim-btn" id="btnStep">Step</button>
+        <iframe class="sim-iframe" src="index.html"></iframe>
+      </div>
+      <div class="sim-instance" data-instance="2">
+        <div class="sim-instance-header">
+          <span class="sim-instance-name">Instance C</span>
+          <span class="sim-status"><span class="sim-dot stopped"></span>Stopped</span>
+        </div>
+        <iframe class="sim-iframe" src="index.html"></iframe>
+      </div>
+      <div class="sim-instance" data-instance="3">
+        <div class="sim-instance-header">
+          <span class="sim-instance-name">Instance D</span>
+          <span class="sim-status"><span class="sim-dot stopped"></span>Stopped</span>
+        </div>
+        <iframe class="sim-iframe" src="index.html"></iframe>
+      </div>
+    </div>
+    <div class="telemetry-panel">
+      <div class="panel-header">
+        <h2>📊 Aggregate Telemetry & Analysis</h2>
+      </div>
+      <div class="panel-section">
+        <h3>Aggregate Stats</h3>
+        <div class="metric-grid">
+          <div class="metric-card"><div class="metric-card-label">Avg Time</div><div class="metric-card-value" id="aggTime">0:00</div></div>
+          <div class="metric-card"><div class="metric-card-label">Avg Kills</div><div class="metric-card-value" id="aggKills">0</div></div>
+          <div class="metric-card"><div class="metric-card-label">Avg Level</div><div class="metric-card-value" id="aggLevel">0</div></div>
+          <div class="metric-card"><div class="metric-card-label">Avg Damage</div><div class="metric-card-value" id="aggDamage">0</div></div>
+          <div class="metric-card"><div class="metric-card-label">Runs Active</div><div class="metric-card-value" id="aggActive">0</div></div>
+          <div class="metric-card"><div class="metric-card-label">Total Kills</div><div class="metric-card-value" id="aggTotalKills">0</div></div>
         </div>
       </div>
-      <div class="telemetry-section">
-        <h3>Run Status</h3>
-        <div class="metric-row"><span class="metric-label">State</span><span class="metric-value" id="stateVal"><span class="status-indicator status-stopped"></span>Stopped</span></div>
-        <div class="metric-row"><span class="metric-label">Time</span><span class="metric-value" id="timeVal">0:00</span></div>
-        <div class="metric-row"><span class="metric-label">Level</span><span class="metric-value" id="levelVal">1</span></div>
-        <div class="metric-row"><span class="metric-label">HP</span><span class="metric-value" id="hpVal">100/100</span></div>
-        <div class="metric-row"><span class="metric-label">Gold</span><span class="metric-value" id="goldVal">0</span></div>
+      <div class="panel-section">
+        <h3>DPS Over Time</h3>
+        <div class="graph-container"><canvas class="graph-canvas" id="dpsGraph"></canvas></div>
       </div>
-      <div class="telemetry-section">
-        <h3>Combat</h3>
-        <div class="metric-row"><span class="metric-label">Kills</span><span class="metric-value" id="killsVal">0</span></div>
-        <div class="metric-row"><span class="metric-label">Bosses</span><span class="metric-value" id="bossesVal">0</span></div>
-        <div class="metric-row"><span class="metric-label">Damage</span><span class="metric-value" id="dmgVal">0</span></div>
-        <div class="metric-row"><span class="metric-label">Enemies</span><span class="metric-value" id="enemiesVal">0</span></div>
+      <div class="panel-section">
+        <h3>Kills Over Time</h3>
+        <div class="graph-container"><canvas class="graph-canvas" id="killsGraph"></canvas></div>
       </div>
-      <div class="telemetry-section">
-        <h3>Movement</h3>
-        <div class="metric-row"><span class="metric-label">Pixels</span><span class="metric-value" id="pixelsVal">0</span></div>
-        <div class="metric-row"><span class="metric-label">Max Dist</span><span class="metric-value" id="maxTravelVal">0</span></div>
-        <div class="metric-row"><span class="metric-label">Max Speed</span><span class="metric-value" id="maxSpeedVal">0</span></div>
-        <div class="metric-row"><span class="metric-label">Linger</span><span class="metric-value" id="lingerVal">0s</span></div>
+      <div class="panel-section">
+        <h3>Level Progression</h3>
+        <div class="graph-container"><canvas class="graph-canvas" id="levelGraph"></canvas></div>
       </div>
-      <div class="telemetry-section">
+      <div class="panel-section">
+        <h3>Instance Details</h3>
+        <div id="instanceDetails"></div>
+      </div>
+      <div class="panel-section">
         <h3>Event Log</h3>
-        <div id="eventLog" style="max-height: 200px; overflow-y: auto;"><div class="log-entry">Simulator ready - uses shared index.html</div></div>
+        <div class="log-panel" id="eventLog"></div>
       </div>
     </div>
   </div>
 
   <script>
-    const frame = document.getElementById('gameFrame');
-    let simTimeScale = 1;
-    let simAutoPlay = false;
+    const instances = [];
+    const graphs = { dps: [], kills: [], level: [] };
+    const instanceData = [
+      {name:'A', time:0, kills:0, level:1, damage:0, hp:0, maxHp:0, enemies:0, active:false, paused:false},
+      {name:'B', time:0, kills:0, level:1, damage:0, hp:0, maxHp:0, enemies:0, active:false, paused:false},
+      {name:'C', time:0, kills:0, level:1, damage:0, hp:0, maxHp:0, enemies:0, active:false, paused:false},
+      {name:'D', time:0, kills:0, level:1, damage:0, hp:0, maxHp:0, enemies:0, active:false, paused:false}
+    ];
     
-    // Time scale
-    document.querySelectorAll('.time-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        simTimeScale = parseFloat(btn.dataset.scale);
-        frame.contentWindow.postMessage({type:'setTimeScale', scale: simTimeScale}, '*');
-        log('Time scale: ' + simTimeScale + 'x');
+    document.querySelectorAll('.sim-iframe').forEach((frame, idx) => {
+      instances.push(frame);
+      frame.addEventListener('load', () => {
+        logEvent(`Instance ${instanceData[idx].name} loaded`, 'success');
+        frame.contentWindow.postMessage({type:'getState'}, '*');
       });
     });
     
-    // Controls
-    document.getElementById('btnStart').addEventListener('click', () => {
-      frame.contentWindow.postMessage({type:'start'}, '*');
-      updateStatus('running');
-      log('Started');
-    });
-    document.getElementById('btnPause').addEventListener('click', () => {
-      frame.contentWindow.postMessage({type:'pause'}, '*');
-      updateStatus('paused');
-      log('Paused');
-    });
-    document.getElementById('btnReset').addEventListener('click', () => {
-      frame.src = frame.src;
-      log('Reset');
-    });
-    document.getElementById('btnAuto').addEventListener('click', () => {
-      simAutoPlay = !simAutoPlay;
-      document.getElementById('btnAuto').classList.toggle('primary', simAutoPlay);
-      frame.contentWindow.postMessage({type:'auto', enabled: simAutoPlay}, '*');
-      log(simAutoPlay ? 'Auto ON' : 'Auto OFF');
-    });
-    document.getElementById('btnStep').addEventListener('click', () => {
-      frame.contentWindow.postMessage({type:'step'}, '*');
-      log('Step');
-    });
-    
-    // Listen for messages
     window.addEventListener('message', (e) => {
       const msg = e.data;
       if (!msg || !msg.type) return;
-      if (msg.type === 'state') {
-        const d = msg.data;
-        if (d.time !== undefined) document.getElementById('timeVal').textContent = Math.floor(d.time/60)+':'+String(Math.floor(d.time%60)).padStart(2,'0');
-        if (d.level !== undefined) document.getElementById('levelVal').textContent = d.level;
-        if (d.hp !== undefined && d.maxHp !== undefined) document.getElementById('hpVal').textContent = Math.floor(d.hp)+'/'+Math.floor(d.maxHp);
-        if (d.gold !== undefined) document.getElementById('goldVal').textContent = d.gold;
-        if (d.kills !== undefined) document.getElementById('killsVal').textContent = d.kills;
-        if (d.bosses !== undefined) document.getElementById('bossesVal').textContent = d.bosses;
-        if (d.enemies !== undefined) document.getElementById('enemiesVal').textContent = d.enemies;
+      // Find which instance sent it
+      for (let i = 0; i < instances.length; i++) {
+        if (e.source === instances[i].contentWindow) {
+          if (msg.type === 'state') {
+            handleInstanceState(i, msg.data);
+          } else if (msg.type === 'telemetry') {
+            // Additional telemetry
+          }
+          break;
+        }
       }
-      if (msg.type === 'log') log(msg.data);
     });
     
-    function updateStatus(s) {
-      const el = document.getElementById('stateVal');
-      el.innerHTML = '<span class="status-indicator status-' + s + '"></span>' + s.charAt(0).toUpperCase() + s.slice(1);
+    function handleInstanceState(idx, data) {
+      const inst = instanceData[idx];
+      if (data.time !== undefined) inst.time = data.time;
+      if (data.kills !== undefined) inst.kills = data.kills;
+      if (data.level !== undefined) inst.level = data.level;
+      if (data.damage !== undefined) inst.damage = data.damage;
+      if (data.hp !== undefined) inst.hp = data.hp;
+      if (data.maxHp !== undefined) inst.maxHp = data.maxHp;
+      if (data.enemies !== undefined) inst.enemies = data.enemies;
+      if (data.running !== undefined) inst.active = data.running;
+      if (data.paused !== undefined) inst.paused = data.paused;
+      updateInstanceUI(idx);
+      updateAggregates();
     }
-    function log(m) {
-      const logEl = document.getElementById('eventLog');
+    
+    function updateInstanceUI(idx) {
+      const inst = instanceData[idx];
+      const el = document.querySelector(`.sim-instance[data-instance="${idx}"] .sim-status`);
+      const dot = el.querySelector('.sim-dot');
+      dot.className = 'sim-dot ' + (inst.paused ? 'paused' : inst.active ? 'running' : 'stopped');
+      el.lastChild.textContent = inst.paused ? 'Paused' : inst.active ? 'Running' : 'Stopped';
+    }
+    
+    function updateAggregates() {
+      let active = 0, totalTime = 0, totalKills = 0, totalLevel = 0, totalDamage = 0;
+      instanceData.forEach(inst => {
+        if (inst.active && !inst.paused) active++;
+        if (inst.active) {
+          totalTime += inst.time;
+          totalKills += inst.kills;
+          totalLevel += inst.level;
+          totalDamage += inst.damage;
+        }
+      });
+      const count = instanceData.filter(i => i.active).length || 1;
+      document.getElementById('aggTime').textContent = Math.floor(totalTime/count/60)+':'+String(Math.floor((totalTime/count)%60)).padStart(2,'0');
+      document.getElementById('aggKills').textContent = Math.floor(totalKills/count);
+      document.getElementById('aggLevel').textContent = (totalLevel/count).toFixed(1);
+      document.getElementById('aggDamage').textContent = Math.floor(totalDamage/count).toLocaleString();
+      document.getElementById('aggActive').textContent = active + '/4';
+      document.getElementById('aggTotalKills').textContent = totalKills.toLocaleString();
+      
+      // Update graphs
+      graphs.dps.push(totalDamage/count);
+      graphs.kills.push(totalKills/count);
+      graphs.level.push(totalLevel/count);
+      if (graphs.dps.length > 60) { graphs.dps.shift(); graphs.kills.shift(); graphs.level.shift(); }
+      drawGraph('dpsGraph', graphs.dps, '#c8452f');
+      drawGraph('killsGraph', graphs.kills, '#5fae7a');
+      drawGraph('levelGraph', graphs.level, '#6ab0ff');
+      
+      // Update instance details
+      const details = document.getElementById('instanceDetails');
+      details.innerHTML = instanceData.map((inst, i) => 
+        `<div style="background:#2a1d10;padding:6px 8px;margin-bottom:4px;border-radius:4px;font-size:11px;display:flex;justify-content:space-between;">
+          <span style="color:#e0a526;">${inst.name}</span>
+          <span>T:${Math.floor(inst.time/60)}:${String(Math.floor(inst.time%60)).padStart(2,'0')} K:${inst.kills} L:${inst.level} HP:${Math.floor(inst.hp)}/${Math.floor(inst.maxHp)}</span>
+        </div>`
+      ).join('');
+    }
+    
+    function drawGraph(id, data, color) {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      if (data.length < 2) return;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      const max = Math.max(...data) || 1;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      data.forEach((val, i) => {
+        const x = (i/(data.length-1)) * canvas.width;
+        const y = canvas.height - (val/max) * canvas.height * 0.8 - 5;
+        if (i === 0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      });
+      ctx.stroke();
+    }
+    
+    document.getElementById('globalTimeScale').addEventListener('change', (e) => {
+      const scale = parseFloat(e.target.value);
+      instances.forEach(f => {
+        try { f.contentWindow.postMessage({type:'setTimeScale', scale}, '*'); } catch(err){}
+      });
+      logEvent(`Global time scale: ${scale}x`, 'warning');
+    });
+    
+    document.getElementById('btnStartAll').addEventListener('click', () => {
+      instances.forEach((f,i) => {
+        try { f.contentWindow.postMessage({type:'start'}, '*'); } catch(err){}
+        instanceData[i].active = true;
+      });
+      logEvent('Started all instances', 'success');
+    });
+    
+    document.getElementById('btnPauseAll').addEventListener('click', () => {
+      instances.forEach((f,i) => {
+        try { f.contentWindow.postMessage({type:'pause'}, '*'); } catch(err){}
+        instanceData[i].paused = true;
+      });
+      logEvent('Paused all instances', 'warning');
+    });
+    
+    document.getElementById('btnAutoAll').addEventListener('click', () => {
+      instances.forEach(f => {
+        try { f.contentWindow.postMessage({type:'auto', enabled: true}, '*'); } catch(err){}
+      });
+      logEvent('Enabled auto-play on all instances', 'success');
+    });
+    
+    document.getElementById('btnResetAll').addEventListener('click', () => {
+      instances.forEach((f,i) => {
+        try { f.src = f.src; } catch(err){}
+        instanceData[i] = {name: instanceData[i].name, time:0, kills:0, level:1, damage:0, hp:0, maxHp:0, enemies:0, active:false, paused:false};
+      });
+      graphs.dps = []; graphs.kills = []; graphs.level = [];
+      logEvent('Reset all instances', 'error');
+    });
+    
+    document.getElementById('btnExport').addEventListener('click', () => {
+      const data = {timestamp: new Date().toISOString(), instances: instanceData, aggregates: {
+        avgKills: document.getElementById('aggKills').textContent,
+        avgLevel: document.getElementById('aggLevel').textContent,
+        avgDamage: document.getElementById('aggDamage').textContent
+      }};
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `crown-survivors-sim-${Date.now()}.json`;
+      a.click();
+      logEvent('Exported simulation data', 'success');
+    });
+    
+    function logEvent(msg, type='') {
+      const log = document.getElementById('eventLog');
       const e = document.createElement('div');
-      e.className = 'log-entry';
-      e.textContent = '[' + new Date().toLocaleTimeString() + '] ' + m;
-      logEl.insertBefore(e, logEl.firstChild);
-      while (logEl.children.length > 50) logEl.removeChild(logEl.lastChild);
+      e.className = 'log-entry ' + type;
+      e.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      log.insertBefore(e, log.firstChild);
+      while (log.children.length > 30) log.removeChild(log.lastChild);
     }
     
-    frame.addEventListener('load', () => {
-      log('Game loaded - shared module');
-      frame.contentWindow.postMessage({type:'getState'}, '*');
-    });
+    setInterval(updateAggregates, 500);
+    logEvent('Multi-instance simulator initialized - 4 instances ready', 'success');
   </script>
 </body>
 </html>

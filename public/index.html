@@ -614,7 +614,13 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       shake = 0,
       uiParts = [],
       zoomT = 0,
-      modsBack = 'title';
+      modsBack = 'title',
+      menuSel = {},
+      minimapOn = true,
+      replayMode = false,
+      replayData = [],
+      replayIndex = 0,
+      replayRecording = true;
     const joy = {
         on: false,
         ox: 0,
@@ -812,8 +818,21 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       }
       keys[e.key.toLowerCase()] = 1;
       if (e.key === 'p' && G && scene === 'play') G.paused = !G.paused;
+      if (replayMode && scene === 'play' && G) {
+        if (e.key === '[' || e.key === ',') { replayIndex = Math.max(0, replayIndex-10); G.paused = true; }
+        if (e.key === ']' || e.key === '.') { replayIndex = Math.min((replayData||[]).length-1, replayIndex+10); G.paused = true; }
+        if (e.key === 'ArrowLeft') { replayIndex = Math.max(0, replayIndex-1); G.paused = true; }
+        if (e.key === 'ArrowRight') { replayIndex = Math.min((replayData||[]).length-1, replayIndex+1); G.paused = true; }
+        if (e.key === 'Escape') { replayMode = false; replayRecording = true; replayData = []; scene = 'title'; }
+      }
+      // Track Shift press time for tap vs hold detection
+      if (e.key === 'Shift') {
+        keys.shiftPressTime = performance.now();
+      }
       if (scene === 'play' && G && !G.choice && !G.paused && !G.over && G.revHold == null) {
-        if (e.key === 'Shift' && md('dash')) dashNow();
+        // Dash on Shift keydown only if dash is enabled but walls mod is OFF (legacy behavior)
+        // If walls mod is ON, we handle tap/hold in keyup
+        if (e.key === 'Shift' && md('dash') && !md('walls')) dashNow();
         if (e.key.toLowerCase() === 'e' && md('walls')) placeWall();
         if (md('numKeys') && /^[1-4]$/.test(e.key) && G.choice) {
           const n = parseInt(e.key);
@@ -829,16 +848,72 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         const n = G.choice.cards.length;
         if (n > 0) {
           if (G.choice.selected === undefined) G.choice.selected = 0;
+          // Check if any movement key is currently held (from before level-up appeared)
+          const movementHeld = keys.arrowup || keys.arrowdown || keys.arrowleft || keys.arrowright || keys.w || keys.a || keys.s || keys.d;
           if (e.key === 'ArrowUp') {
             G.choice.selected = (G.choice.selected - 1 + n) % n;
             e.preventDefault();
           } else if (e.key === 'ArrowDown') {
             G.choice.selected = (G.choice.selected + 1) % n;
             e.preventDefault();
-          } else if (e.key === 'Enter' || e.key === 'Shift') {
+          } else if ((e.key === 'Enter' || e.key === 'Shift') && !movementHeld) {
+            // Ignore selection if a movement key is still held (prevents accidental picks when leveling up while moving)
             const c = G.choice.cards[G.choice.selected];
             G.choice.cards.splice(G.choice.selected, 1);
             choose(c);
+            e.preventDefault();
+          }
+        }
+      }
+      // General menu keyboard navigation (title, chars, shop, mods, qa-menu, changelog, lb, pause, over)
+      const menuScenes = ['title', 'chars', 'shop', 'mods', 'qa-menu', 'changelog', 'lb', 'over'];
+      if (menuScenes.includes(scene) && btns.length > 0) {
+        if (menuSel[scene] === undefined) menuSel[scene] = 0;
+        if (e.key === 'ArrowUp') {
+          menuSel[scene] = (menuSel[scene] - 1 + btns.length) % btns.length;
+          e.preventDefault();
+        } else if (e.key === 'ArrowDown') {
+          menuSel[scene] = (menuSel[scene] + 1) % btns.length;
+          e.preventDefault();
+        } else if (e.key === 'Enter' || e.key === 'Shift') {
+          const btn = btns[menuSel[scene]];
+          if (btn && btn.f) btn.f();
+          e.preventDefault();
+        } else if (e.key === 'Escape') {
+          // Default back navigation for menus
+          if (scene === 'mods' && modsBack === 'pause' && G) {
+            // From pause menu, Escape returns to game
+            G.paused = false;
+            go('play');
+          } else if (scene === 'lb') {
+            // Leaderboard uses its own back target
+            lb.rank = null;
+            go(lb.back);
+          } else if (scene === 'chars' || scene === 'shop' || scene === 'mods' || scene === 'qa-menu' || scene === 'changelog' || scene === 'over') {
+            go('title');
+          } else if (scene === 'title') {
+            // On title, Escape does nothing (or could close app)
+          }
+          e.preventDefault();
+        }
+      }
+      // Pause menu keyboard navigation
+      if (scene === 'play' && G && G.paused && !G.choice && !G.over) {
+        if (menuSel.pause === undefined) menuSel.pause = 0;
+        const pauseBtns = btns.filter(b => b.k && (b.k.startsWith('RESUME|') || b.k.startsWith('MODS|') || b.k.startsWith('GIVE UP|')));
+        if (pauseBtns.length > 0) {
+          if (e.key === 'ArrowUp') {
+            menuSel.pause = (menuSel.pause - 1 + pauseBtns.length) % pauseBtns.length;
+            e.preventDefault();
+          } else if (e.key === 'ArrowDown') {
+            menuSel.pause = (menuSel.pause + 1) % pauseBtns.length;
+            e.preventDefault();
+          } else if (e.key === 'Enter' || e.key === 'Shift') {
+            const btn = pauseBtns[menuSel.pause];
+            if (btn && btn.f) btn.f();
+            e.preventDefault();
+          } else if (e.key === 'Escape') {
+            G.paused = false;
             e.preventDefault();
           }
         }
@@ -847,6 +922,20 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     addEventListener('keyup', e => {
       const k = e.key.toLowerCase();
       keys[k] = 0;
+      // Handle Shift tap vs hold: tap = dash, hold = toggle wall draw
+      if (k === 'shift' && keys.shiftPressTime) {
+        const held = performance.now() - keys.shiftPressTime;
+        if (scene === 'play' && G && !G.choice && !G.paused && !G.over && G.revHold == null) {
+          if (held < 200) {
+            // Tap: dash
+            if (md('dash')) dashNow();
+          } else {
+            // Hold: toggle wall draw (if walls mod enabled)
+            if (md('walls')) placeWall();
+          }
+        }
+        keys.shiftPressTime = 0;
+      }
       if (k === 'meta' || k === 'os' || k === 'control' || k === 'alt') keysOff()
     });
     addEventListener('blur', keysOff);
@@ -908,19 +997,25 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
           paused: G.paused,
           time: G.t,
           level: G.lvl,
-          hp: G.p?.hp,
-          maxHp: G.p?.mhp,
+          hp: G.p ? G.p.hp : 0,
+          maxHp: G.p ? G.p.mhp : 0,
           gold: S.gold,
           kills: G.kills,
           bosses: G.bb,
           damage: G.dmgDealt,
-          enemies: G.en?.length,
+          enemies: G.en ? G.en.length : 0,
           powerUps: {
-            speed: S.mods?.speedLevel,
-            dash: S.mods?.dashLevel,
-            walls: S.mods?.wallLevel,
-            revive: S.mods?.reviveLevel
-          }
+            speed: S.mods ? S.mods.speedLevel : 0,
+            dash: S.mods ? S.mods.dashLevel : 0,
+            walls: S.mods ? S.mods.wallLevel : 0,
+            revive: S.mods ? S.mods.reviveLevel : 0
+          },
+          weapons: Object.keys(G.w || {}),
+          passives: Object.keys(G.ps || {}),
+          rerolls: G.rerolls,
+          curse: G.curse,
+          phase: G.phase,
+          char: G.char
         }
       };
       window.parent.postMessage(data, '*');
@@ -1350,7 +1445,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       dmg *= SC.dmg * (crit ? 2 : 1) * rnd(.9, 1.1);
       e.hp -= dmg;
       e.flash = .1;
-      G.dmgDealt += dmg;
+      G.dmgDealt = (G.dmgDealt || 0) + dmg;
       if (kb && !e.boss) {
         const l = Math.hypot(ax, ay) || 1;
         e.kx += ax / l * kb;
@@ -2230,7 +2325,8 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     const WG = 24;
 
     function wallCap() {
-      return [3, 4, 5, 6, 7][Math.max(1, G.wallLv) - 1] + (G.wallEvo ? 2 : 0)
+      // 2× max walls for the new mod (tap Shift=dash, hold Shift=wall draw)
+      return ([3, 4, 5, 6, 7][Math.max(1, G.wallLv) - 1] + (G.wallEvo ? 2 : 0)) * 2;
     }
 
     function placeWall() {
@@ -2284,7 +2380,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         tone(120, .15, 'square', .05, -40);
         return false;
       }
-      const hp = g.wallEvo ? 220 : 16 + 12 * lv;
+      const hp = g.wallEvo ? 440 : (16 + 12 * lv) * 2;
       g.walls.push({
         x1,
         y1,
@@ -3335,7 +3431,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       return 'rgb(' + f(r) + ',' + f(g) + ',' + f(b) + ')'
     }
 
-    function button(lbl, X, Y, w, h, f, col = '#e0a526', sz = 18, dis) {
+    function button(lbl, X, Y, w, h, f, col = '#e0a526', sz = 18, dis, sel) {
       const k = lbl + '|' + (X | 0) + '|' + (Y | 0);
       btns.push({
         x: X,
@@ -3356,6 +3452,15 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       rr(X + 5 * U, Y + pr + 4 * U, w - 10 * U, h * .28, 6 * U, 'rgba(255,255,255,.22)');
       if (dis) x.globalAlpha = .55;
       txt(lbl, X + w / 2, Y + pr + h / 2 + 1 * U, sz, pal.paper);
+      if (sel) {
+        x.globalAlpha = 1;
+        x.strokeStyle = '#ffd23f';
+        x.lineWidth = 4 * U;
+        x.strokeRect(X - 2 * U, Y + pr - 2 * U, w + 4 * U, h + 4 * U);
+        x.strokeStyle = '#fff';
+        x.lineWidth = 2 * U;
+        x.strokeRect(X + 1 * U, Y + pr + 1 * U, w - 2 * U, h - 2 * U);
+      }
       x.globalAlpha = 1
     }
 
@@ -4270,6 +4375,49 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       }
     }
 
+    function drawMinimap() {
+      if (!G || !G.p || !minimapOn) return;
+      const g = G, p = g.p;
+      const mm = 120 * U, mmt = 120 * U;
+      const mx = W - mm - 10 * U, my = 60 * U + (typeof SAT !== 'undefined' ? SAT : 0);
+      x.fillStyle = 'rgba(30,20,10,.7)';
+      rr(mx, my, mm, mmt, 4 * U, 'rgba(30,20,10,.7)');
+      x.strokeStyle = '#8b7355';
+      x.lineWidth = 1 * U;
+      rr(mx, my, mm, mmt, 4 * U, 'rgba(0,0,0,0)');
+      // scale
+      const sc = mm / 800;
+      // player
+      x.fillStyle = '#ffd23f';
+      x.beginPath();
+      x.arc(mx + mm/2 + p.x * sc * 0.1, my + mmt/2 + p.y * sc * 0.1, 2 * U, 0, 7);
+      x.fill();
+      // enemies
+      x.fillStyle = '#c8452f';
+      for (let i = 0; i < Math.min(g.en.length, 50); i++) {
+        const e = g.en[i];
+        if (e.dead) continue;
+        x.beginPath();
+        x.arc(mx + mm/2 + e.x * sc * 0.1, my + mmt/2 + e.y * sc * 0.1, 1.2 * U, 0, 7);
+        x.fill();
+      }
+      // gems
+      x.fillStyle = '#6ab0ff';
+      for (let i = 0; i < Math.min(g.gems.length, 30); i++) {
+        const ge = g.gems[i];
+        x.beginPath();
+        x.arc(mx + mm/2 + ge.x * sc * 0.1, my + mmt/2 + ge.y * sc * 0.1, 1 * U, 0, 7);
+        x.fill();
+      }
+      // boss
+      if (g.boss) {
+        x.fillStyle = '#ff4d4d';
+        x.beginPath();
+        x.arc(mx + mm/2 + g.boss.x * sc * 0.1, my + mmt/2 + g.boss.y * sc * 0.1, 3 * U, 0, 7);
+        x.fill();
+      }
+    }
+    
     function drawHud() {
       const g = G,
         p = g.p,
@@ -4330,6 +4478,9 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         x.stroke();
         txt('x' + g.inf[k], cx + 8 * U, cy + 8 * U, 9, '#ffd23f');
         i++
+      }
+      if (typeof replayMode !== 'undefined' && replayMode) {
+        txt('REPLAY [' + (replayIndex+1) + '/' + (replayData||[]).length + '] [< >] ESC', W/2, t+50*U, 12, '#6ab0ff');
       }
       if (g.boss) {
         const e = g.boss,
@@ -4447,15 +4598,15 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
             j++
           }
         }
-        button('RESUME', W / 2 - 90 * U, H * .68, 180 * U, 50 * U, () => g.paused = false, '#5fae7a', 20);
+        button('RESUME', W / 2 - 90 * U, H * .68, 180 * U, 50 * U, () => g.paused = false, '#5fae7a', 20, false, menuSel.pause === 0);
         button('MODS', W / 2 - 120 * U, H * .68 + 62 * U, 110 * U, 44 * U, () => {
           modsBack = 'pause';
           go('mods')
-        }, '#6a5acd', 13);
+        }, '#6a5acd', 13, false, menuSel.pause === 1);
         button('GIVE UP', W / 2 + 10 * U, H * .68 + 62 * U, 110 * U, 44 * U, () => {
           g.paused = false;
           endRun(false)
-        }, '#8b5a2b', 13)
+        }, '#8b5a2b', 13, false, menuSel.pause === 2)
       }
       if (g.choice) drawChoice();
       if (g.over) drawOver()
@@ -4557,9 +4708,9 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       }
       const aff = META.find(m => S.meta[m[0]] < m[4] && S.gold >= m[3] * (S.meta[m[0]] + 1));
       if (aff) txt('You can afford: ' + aff[1] + '!', W / 2, y + 40 * U, 12, '#2f6b44', 'center', false);
-      button('↻ AGAIN', W / 2 - 105 * U, H * .7, 210 * U, 52 * U, () => go('play', startRun), '#c8452f', 22);
-      button('UPGRADES', W / 2 - 105 * U, H * .7 + 62 * U, 102 * U, 42 * U, () => go('shop'), '#5fae7a', 13);
-      button('HOME', W / 2 + 3 * U, H * .7 + 62 * U, 102 * U, 42 * U, () => go('title'), '#8b5a2b', 14)
+      button('↻ AGAIN', W / 2 - 105 * U, H * .7, 210 * U, 52 * U, () => go('play', startRun), '#c8452f', 22, false, menuSel.over === 0);
+      button('UPGRADES', W / 2 - 105 * U, H * .7 + 62 * U, 102 * U, 42 * U, () => go('shop'), '#5fae7a', 13, false, menuSel.over === 1);
+      button('HOME', W / 2 + 3 * U, H * .7 + 62 * U, 102 * U, 42 * U, () => go('title'), '#8b5a2b', 14, false, menuSel.over === 2)
     }
     // ===== menus =====
     function menuBg() {
@@ -4636,38 +4787,41 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       x.translate(W / 2, H * .64 + 29 * U);
       x.scale(pl, pl);
       x.translate(-W / 2, -(H * .64 + 29 * U));
-      button('▶ PLAY', W / 2 - 105 * U, H * .64, 210 * U, 58 * U, () => go('chars'), '#c8452f', 26);
+      button('▶ PLAY', W / 2 - 105 * U, H * .64, 210 * U, 58 * U, () => go('chars'), '#c8452f', 26, false, menuSel.title === 0);
+      button('↺ REPLAY', W / 2 - 105 * U, H * .64 + 70 * U, 210 * U, 48 * U, () => { replayMode = true; replayIndex = Math.max(0,(replayData||[]).length-200); scene='play'; if(G)G.paused=true; toast={t:'REPLAY MODE',l:1.5}; }, '#6ab0ff', 20, false, menuSel.title === 1);
       x.restore();
-      button('UPGRADES', W / 2 - 105 * U, H * .64 + 70 * U, 102 * U, 46 * U, () => go('shop'), '#5fae7a', 14);
+      button('UPGRADES', W / 2 - 105 * U, H * .64 + 70 * U, 102 * U, 46 * U, () => go('shop'), '#5fae7a', 14, false, menuSel.title === 2);
       button('MODS', W / 2 + 3 * U, H * .64 + 70 * U, 102 * U, 46 * U, () => {
         modsBack = 'title';
         go('mods')
-      }, '#6a5acd', 14);
+      }, '#6a5acd', 14, false, menuSel.title === 3);
       txt('v0.1.1', W / 2, H * .64 + 136 * U, 11, pal.paper);
       txt('CHANGELOG', W / 2, H * .64 + 152 * U, 11, pal.paper, 'center', false);
       txt('Drag to move · auto attack · pick upgrades', W / 2, H * .64 + 136 * U, 11, pal.paper);
       button(S.muted ? '♪×' : '♪', 10 * U, H - 44 * U, 40 * U, 30 * U, () => {
         S.muted = !S.muted;
         save()
-      }, '#8b5a2b', 14);
+      }, '#8b5a2b', 14, false, menuSel.title === 4);
       button('■', 58 * U, H - 44 * U, 40 * U, 30 * U, () => {
         S.mods.qa = !S.mods.qa;
         save();
         sfx.click()
-      }, '#6a5acd', 14);
+      }, '#6a5acd', 14, false, menuSel.title === 5);
       button('⟳', 76 * U, H - 44 * U, 40 * U, 30 * U, async () => {
         toast = {
           t: 'Updating...',
           l: 3
         };
         try {
-          const rs = await navigator.serviceWorker?.getRegistrations();
-          if (rs) await Promise.all(rs.map(r => r.unregister()));
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            const rs = await navigator.serviceWorker.getRegistrations();
+            if (rs) await Promise.all(rs.map(r => r.unregister()));
+          }
           const ks = await caches.keys();
           await Promise.all(ks.map(k => caches.delete(k)))
         } catch (e) {}
         location.replace(location.pathname + '?v=' + Date.now())
-      }, '#8b5a2b', 14);
+      }, '#8b5a2b', 14, false, menuSel.title === 6);
     }
 
     function drawChars() {
@@ -4681,8 +4835,9 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       CH.forEach((c, i) => {
         const y = H * .05 + 56 * U + i * (ch + 6 * U),
           own = S.chars.includes(i),
-          sel = S.char === i;
-        rr(px + 14 * U, y, pw - 28 * U, ch, 10 * U, sel ? '#ffe58a' : '#e9d3a0', sel ? '#c8452f' : pal.ink, sel ? 4 : 2);
+          sel = S.char === i,
+          kbsel = menuSel.chars === i;
+        rr(px + 14 * U, y, pw - 28 * U, ch, 10 * U, sel ? '#ffe58a' : '#e9d3a0', kbsel ? '#ffd23f' : (sel ? '#c8452f' : pal.ink), kbsel ? 6 : (sel ? 4 : 2));
         x.save();
         x.translate(px + 46 * U, y + ch / 2 + 4 * U);
         x.scale(U * 1.8, U * 1.8);
@@ -4734,10 +4889,11 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         for (let i = 0; i <= S.maxCurse; i++) button('' + i, px + 84 * U + i * 34 * U, cy, 30 * U, 32 * U, () => {
           S.curse = i;
           save()
-        }, S.curse === i ? '#6a5acd' : '#a8875a', 13)
+        }, S.curse === i ? '#6a5acd' : '#a8875a', 13, false, menuSel.chars === 4 + i);
       } else txt('Win a run to unlock CURSE levels', W / 2, cy + 16 * U, 11, '#8b6a3a', 'center', false);
-      button('▶ START RUN', W / 2 - 105 * U, H * .95 - 88 * U, 210 * U, 50 * U, () => go('play', startRun), '#c8452f', 20);
-      button('BACK', W / 2 - 55 * U, H * .95 - 32 * U, 110 * U, 28 * U, () => go('title'), '#8b5a2b', 13)
+      const curseBtnCount = S.maxCurse > 0 ? S.maxCurse + 1 : 0;
+      button('▶ START RUN', W / 2 - 105 * U, H * .95 - 88 * U, 210 * U, 50 * U, () => go('play', startRun), '#c8452f', 20, false, menuSel.chars === 4 + curseBtnCount);
+      button('BACK', W / 2 - 55 * U, H * .95 - 32 * U, 110 * U, 28 * U, () => go('title'), '#8b5a2b', 13, false, menuSel.chars === 5 + curseBtnCount)
     }
 
     function drawShop() {
@@ -4765,9 +4921,9 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
           save();
           sfx.buy()
         };
-        button(btnTxt, px + pw - 96 * U, y + rh * .12, 80 * U, rh * .68, buy, btnBg)
+        button(btnTxt, px + pw - 96 * U, y + rh * .12, 80 * U, rh * .68, buy, btnBg, 14, false, menuSel.shop === i)
       });
-      button('BACK', W / 2 - 60 * U, H * .96 - 46 * U, 120 * U, 38 * U, () => go(G && G.over ? 'title' : 'title'), '#8b5a2b', 15)
+      button('BACK', W / 2 - 60 * U, H * .96 - 46 * U, 120 * U, 38 * U, () => go(G && G.over ? 'title' : 'title'), '#8b5a2b', 15, false, menuSel.shop === META.length)
     }
 
     function drawQA() {
@@ -4786,15 +4942,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         ['Back', () => { scene = 'title'; sfx.click() }]
       ];
       options.forEach((opt, i) => {
-        btns.push({
-          x: px + 20 * U,
-          y: y + i * 48 * U,
-          w: pw - 40 * U,
-          h: 40 * U,
-          k: 'qa-' + i,
-          f: () => { opt[1](); sfx.click() }
-        });
-        txt(opt[0], W / 2, y + i * 48 * U + 24 * U, 16, pal.ink, 'center', false);
+        button(opt[0], px + 20 * U, y + i * 48 * U, pw - 40 * U, 40 * U, () => { opt[1](); sfx.click() }, '#a8875a', 16, false, menuSel['qa-menu'] === i);
       });
     }
 
@@ -4803,7 +4951,8 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       if (scene === 'play' && G) {
         SC = SC || st();
         drawWorld();
-        drawHud()
+        drawHud();
+        drawMinimap()
       } else if (scene === 'title') drawTitle();
       else if (scene === 'chars') drawChars();
       else if (scene === 'shop') drawShop();
@@ -4854,6 +5003,12 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       if (G) G.paused = true;
     }
     for (let i = 0; i < speedMul; i++) update(dt);
+    // Record replay
+    if (replayRecording && scene === 'play' && typeof G !== 'undefined' && G && G.p) {
+      if (!replayData) replayData = [];
+      if (replayData.length > 5000) replayData.shift();
+      replayData.push({t: G.t, x: G.p.x, y: G.p.y, hp: G.p.hp, kills: G.kills, lvl: G.lvl});
+    }
     draw();
     // Send state updates periodically
     if (!window.simStateTimer) window.simStateTimer = 0;
@@ -4911,7 +5066,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     MDL.forEach((m, i) => {
       const y = H * .04 + 66 * U + i * rh,
         on = !!S.mods[m.id];
-      rr(px + 14 * U, y, pw - 28 * U, rh - 8 * U, 10 * U, on ? '#f3e2b8' : '#ddd0ac', pal.ink, 2);
+      rr(px + 14 * U, y, pw - 28 * U, rh - 8 * U, 10 * U, on ? '#f3e2b8' : '#ddd0ac', menuSel.mods === i ? '#ffd23f' : pal.ink, menuSel.mods === i ? 4 : 2);
       x.globalAlpha = on ? 1 : .55;
       txt(m.n, px + 22 * U, y + 20 * U, 13, pal.ink, 'left', false);
       txt(m.d.length > 40 ? m.d.slice(0, 40) + '…' : m.d, px + 22 * U, y + 38 * U, 9, '#5a4030', 'left', false);
@@ -4919,12 +5074,12 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         S.mods[m.id] = on ? 0 : 1;
         save();
         sfx.click()
-      }, on ? '#5fae7a' : '#8b5a2b', 11);
+      }, on ? '#5fae7a' : '#8b5a2b', 11, false, menuSel.mods === i);
       if (m.id === 'speed' && on) button('FEEL: ' + (S.mods.speedCurve ? 'RESPONSIVE' : 'LINEAR'), px + 22 * U, y + rh - 36 * U, 150 * U, 24 * U, () => {
         S.mods.speedCurve = S.mods.speedCurve ? 0 : 1;
         save();
         sfx.click()
-      }, '#6a5acd', 9);
+      }, '#6a5acd', 9, false, false);
       else if (m.id === 'dash') txt(S.mods.dash ? 'Level up via cards · SHIFT key + » button' : 'Off: no dash in your runs', px + 22 * U, y + rh - 32 * U, 9, on ? '#8b6a3a' : '#a08a6a', 'left', false);
       else if (m.id === 'walls') txt(S.mods.walls ? 'Tap ▬ / E to draw · evolve w/ Armor' : 'Off: no walls in your runs', px + 22 * U, y + rh - 32 * U, 9, on ? '#8b6a3a' : '#a08a6a', 'left', false);
       else if (m.id === 'leftHand') txt(S.mods.leftHand ? 'Buttons: lower right · joystick: left thumb' : 'Buttons: lower left (default)', px + 22 * U, y + rh - 32 * U, 9, on ? '#8b6a3a' : '#a08a6a', 'left', false);
@@ -4937,12 +5092,15 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     button('BACK', W / 2 - 60 * U, H * .95 - 46 * U, 120 * U, 38 * U, () => {
       if (modsBack === 'pause' && G) G.paused = true;
       go(modsBack === 'pause' ? 'play' : 'title')
-    }, '#8b5a2b', 14)
+    }, '#8b5a2b', 14, false, menuSel.mods === MDL.length)
   }
   // ===== leaderboard (hidden when LB_API is empty) =====
 
   // ===== changelog screen =====
   const CHANGELOG = [{
+    v: '0.1.2',
+    d: 'New mod: Tap Shift to dash, hold Shift for wall draw. 2× wall max count & durability buff. Accessibility: arrow keys + Enter/Shift for all menus.'
+  }, {
     v: '0.1.1',
     d: 'Bugfixes and balance updates: fixed dash timer decrement, wall button overlap, shop button syntax, added disableTracking feature.'
   }];
@@ -4958,7 +5116,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     CHANGELOG.forEach((m, i) => {
       const y = H * .04 + 86 * U + i * rh,
         on = 1;
-      rr(px + 14 * U, y, pw - 28 * U, rh - 8 * U, 10 * U, on ? '#f3e2b8' : '#ddd0ac', pal.ink, 2);
+      rr(px + 14 * U, y, pw - 28 * U, rh - 8 * U, 10 * U, on ? '#f3e2b8' : '#ddd0ac', menuSel.changelog === i ? '#ffd23f' : pal.ink, menuSel.changelog === i ? 4 : 2);
       x.globalAlpha = on ? 1 : .55;
       txt(m.v, px + 22 * U, y + 10 * U, 13, pal.ink, 'left', false);
       txt(m.d.length > 60 ? m.d.slice(0, 60) + '…' : m.d, px + 22 * U, y + rh - 18 * U, 9, '#5a4030', 'left', false);
@@ -4967,8 +5125,8 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     button('BACK', px + 20 * U, H * .95 - 50 * U, 80 * U, 38 * U, () => {
       scene = 'title';
       sfx.click()
-    }, '#8b5a2b', 11);
-    txt('v0.1.1 - Initial release', W / 2, H * .95 - 20 * U, 11, pal.paper, 'center', false)
+    }, '#8b5a2b', 11, false, menuSel.changelog === CHANGELOG.length);
+    txt('v0.1.2 - Tap Shift=Dash, Hold Shift=Wall Draw (2× walls)', W / 2, H * .95 - 20 * U, 11, pal.paper, 'center', false)
   }
   FONT['#'] = [10, 31, 10, 31, 10];
   const LBK = 'crownsurv_classic_lb', HERO_ID = CH.map(c => c.n.toLowerCase().replace(/ /g, '-'));
@@ -5417,7 +5575,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     button('SIGN OUT', X + 120, Y, 66, 30, lbSignOut, '#6a4a3a', 9)
   }
 
-  function xButton(X, Y, w, h, f, sz = 18) {
+  function xButton(X, Y, w, h, f, sz = 18, sel) {
     btns.push({
       x: X,
       y: Y,
@@ -5436,6 +5594,14 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     Y += pr;
     rr(X, Y, w, h, 12, gr, LINK);
     rr(X + 5, Y + 4, w - 10, h * .28, 6, 'rgba(255,255,255,.14)');
+    if (sel) {
+      x.strokeStyle = '#ffd23f';
+      x.lineWidth = 4;
+      x.strokeRect(X - 2, Y - 2, w + 4, h + 4);
+      x.strokeStyle = '#fff';
+      x.lineWidth = 2;
+      x.strokeRect(X + 1, Y + 1, w - 2, h - 2);
+    }
     const s = h * .18,
       gy = Y + h / 2 + 1;
     x.font = 'bold ' + Math.round(sz * U) + 'px "Courier New",Courier,monospace';
@@ -5474,8 +5640,9 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     rr(13, 140, 364, 630, 16, '#f3e2b8', LINK, 4);
     TABS.forEach(([id, nm], i) => {
       const X = 15 + i * 120,
-        on = id === b;
-      rr(X, on ? 104 : 110, 116, on ? 44 : 34, 9, on ? '#f3e2b8' : '#a8875a', LINK, 3);
+        on = id === b,
+        kbsel = menuSel.lb === i;
+      rr(X, on ? 104 : 110, 116, on ? 44 : 34, 9, on ? '#f3e2b8' : '#a8875a', kbsel ? '#ffd23f' : LINK, kbsel ? 5 : 3);
       if (on) {
         x.fillStyle = '#f3e2b8';
         x.fillRect(X + 3, 138, 110, 14)
@@ -5545,9 +5712,10 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     } else if (rows.length) txt('TOP 50', 195, 634, 10, '#8b6a3a', 'center', false);
     x.fillStyle = '#c9a66b';
     x.fillRect(28, 650, 326, 2);
+    const tabCount = TABS.length;
     if (!lbIn()) {
       txt('Sign in to post scores & see your rank', 195, 668, 10, '#8b6a3a', 'center', false);
-      xButton(85, 684, 220, 44, () => lbSignIn(null), 15)
+      xButton(85, 684, 220, 44, () => lbSignIn(null), 15, menuSel.lb === tabCount)
     } else if (meR && meR.row) {
       if (!meVis) {
         txt('YOUR BEST', 195, 664, 9, '#8b6a3a', 'center', false);
@@ -5558,7 +5726,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     button('BACK', 135, 788, 120, 36, () => {
       lb.rank = null;
       go(lb.back)
-    }, '#8b5a2b', 14);
+    }, '#8b5a2b', 14, false, menuSel.lb === tabCount + (lbIn() ? 0 : 1));
     if (lb.rank) drawRankFx();
     lbEnd()
   }

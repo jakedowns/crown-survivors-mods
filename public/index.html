@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       tut: { step: 0, t: 0 },
       char: 0,
       chars: [0],
-      meta: { might: 0, tome: 0, magnet: 0, area: 0, armor: 0, boots: 0, speed: 0, luck: 0, greed: 0, dmg: 0, cd: 0, mag: 0, hp: 0, regen: 0 },
+      meta: { might: 0, tome: 0, magnet: 0, area: 0, armor: 0, boots: 0, speed: 0, luck: 0, greed: 0, dmg: 0, cd: 0, mag: 0, hp: 0, regen: 0, choice: 0 },
       mods: { speed: 1, speedCurve: 0, dash: 1, walls: 1, revive: 1, leftHand: 0, numKeys: 1, timeFreeze: 1, areaClear: 1, qa: 0, disableTracking: 1 }
     };
     let S;
@@ -475,7 +475,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       if (S.muted || !AC) return;
       const b = AC.createBuffer(1, AC.sampleRate * d | 0, AC.sampleRate),
         a = b.getChannelData(0);
-      for (let i = 0; i < a.length; i++) a[i] = (Math.random() * 2 - 1) * (1 - i / a.length);
+      for (let i = 0; i < a.length; i++) a[i] = (vrand() * 2 - 1) * (1 - i / a.length);
       const s = AC.createBufferSource(),
         g = AC.createGain();
       s.buffer = b;
@@ -495,7 +495,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     const sfx = {
       shoot: () => lim('sh', 70) && tone(700, .05, 'square', .025, -300),
       hit: () => lim('hi', 45) && noise(.04, .05),
-      kill: () => lim('k', 40) && tone(300 + Math.random() * 200, .07, 'triangle', .05, -150),
+      kill: () => lim('k', 40) && tone(300 + vrand() * 200, .07, 'triangle', .05, -150),
       gem: n => lim('g', 35) && tone(mf(72 + Math.min(n, 24)), .06, 'square', .03),
       gold: () => lim('go', 60) && [1046, 1568].forEach((f, i) => tone(f, .07, 'square', .04, 0, .04 * i)),
       lvl: () => [60, 64, 67, 72, 76, 79].forEach((m, i) => tone(mf(m), .12, 'square', .06, 0, .05 * i)),
@@ -620,7 +620,9 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       replayMode = false,
       replayData = [],
       replayIndex = 0,
-      replayRecording = true;
+      replayRecording = true,
+      buildProfile = null,
+      buildProfileName = 'default';
     const joy = {
         on: false,
         ox: 0,
@@ -943,7 +945,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       if (document.hidden) keysOff()
     });
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden && scene === 'play' && G && !G.over) G.paused = true
+      if (document.hidden && scene === 'play' && G && !G.over && !G.auto) G.paused = true
     });
     addEventListener('blur', () => {
       if (scene === 'play' && G && !G.over && !G.auto) G.paused = true
@@ -953,6 +955,44 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     window.simTimeScale = 1;
     let simAutoPlay = false;
     let simStepMode = false;
+    window.simRender = true;
+
+    // Deterministic RNG for analysis runs. When a seed is set, Math.random is
+    // replaced with a mulberry32 generator so that the same seed + profile
+    // always produces the same run (at 100x/MAX, which use fixed step counts).
+    const _origRandom = Math.random;
+    // Visual/audio randomness must not consume the seeded simulation stream,
+    // otherwise rendering/audio timing would change simulation outcomes.
+    const vrand = () => _origRandom();
+    window.simSeed = 0;
+    function applySimSeed(seed) {
+      if (!seed) {
+        Math.random = _origRandom;
+        return;
+      }
+      let s = (seed >>> 0) || 1;
+      Math.random = function () {
+        s = (s + 0x6D2B79F5) | 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        if (window.simDbg) {
+          window.simDbg.rand++;
+          if (window.simTraceRand) {
+            const st = new Error().stack || '';
+            const frames = (st.split('\n').filter(l => l.includes('at ')) || []).slice(1);
+            const key = frames.length
+              ? frames[0].trim().replace(/0x[0-9a-f]+/gi, '0x?').replace(/\d+/g, 'N')
+              : 'anon';
+            window.simDbg.randBy = window.simDbg.randBy || {};
+            window.simDbg.randBy[key] = (window.simDbg.randBy[key] || 0) + 1;
+          }
+        }
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+    function applySimSeedNow() {
+      applySimSeed(window.simSeed);
+    }
     
     addEventListener('message', (event) => {
       const msg = event.data;
@@ -971,6 +1011,22 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         case 'resume':
           if (G) G.paused = false;
           break;
+        case 'reset':
+          scene = 'play';
+          applySimSeedNow(); // deterministic runs start from the same RNG state
+          startRun();
+          window.simOverSent = false;
+          window.simLimitSent = false;
+          window.simStateTimer = 0;
+          window.simStateWall = 0;
+          window.simDbg = { steps: 0, draws: 0, rand: 0, randBy: {} };
+          if (G) {
+            G.auto = msg.auto !== false;
+            G.paused = false;
+          }
+          window.simAutoPlay = msg.auto !== false;
+          sendGameState();
+          break;
         case 'auto':
           if (G) G.auto = msg.enabled;
           window.simAutoPlay = msg.enabled;
@@ -982,11 +1038,54 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         case 'setTimeScale':
           simTimeScale = msg.scale;
           break;
+        case 'setTimeLimit':
+          window.simTimeLimit = msg.limit || 0;
+          window.simLimitSent = false;
+          break;
+        case 'setSeed':
+          window.simSeed = msg.seed || 0;
+          // Only apply immediately when no run is active; otherwise the next
+          // reset seeds it (avoids races with the tail of the previous run).
+          if (scene !== 'play' || !G || G.over) applySimSeedNow();
+          break;
+        case 'setRender':
+          window.simRender = !!msg.render;
+          break;
+        case 'setBuildProfile':
+          if (msg.profile) {
+            window.simBuildProfile = msg.profile;
+            buildProfile = msg.profile;
+            buildProfileName = msg.profile.name || 'custom';
+          } else {
+            window.simBuildProfile = null;
+            buildProfile = null;
+            buildProfileName = 'default';
+          }
+          break;
+        case 'getMeta':
+          sendGameMeta();
+          break;
         case 'getState':
           sendGameState();
           break;
       }
     });
+    
+    function sendGameMeta() {
+      const meta = {
+        type: 'meta',
+        data: {
+          weapons: Object.keys(WP).map(k => ({
+            k, n: WP[k].n, evo: WP[k].e, evoP: WP[k].ev, d: WP[k].d
+          })),
+          passives: Object.keys(PS).map(k => ({
+            k, n: PS[k].n, d: PS[k].d
+          })),
+          mods: (typeof MDL !== 'undefined' ? MDL.map(m => ({ id: m.id, n: m.n })) : [])
+        }
+      };
+      window.parent.postMessage(meta, '*');
+    }
     
     function sendGameState() {
       if (!G) return;
@@ -995,6 +1094,8 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         data: {
           running: scene === 'play',
           paused: G.paused,
+          over: !!G.over,
+          won: !!G.won,
           time: G.t,
           level: G.lvl,
           hp: G.p ? G.p.hp : 0,
@@ -1049,6 +1150,8 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     
     // ===== helpers =====
     const rnd = (a, b) => a + Math.random() * (b - a),
+      // visual-only randomness: never consumes the seeded simulation stream
+      vrnd = (a, b) => a + vrand() * (b - a),
       d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 
     function fx(x0, y0, n, c, sp = 60, life = .5, sz = 3) {
@@ -1172,67 +1275,125 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       return G.w[k] || 0
     }
 
+    // Pick the best card from the offered set according to the active build
+    // profile (ranking + weight sliders). Evolutions are strongly preferred.
+    // Falls back to a uniform random pick when no profile is set.
+    function simPickCardIndex(cs) {
+      const bp = (typeof window !== 'undefined') ? (window.simBuildProfile || buildProfile) : buildProfile;
+      if (!bp || !bp.ranks || !cs || cs.length === 0) {
+        return Math.floor(Math.random() * cs.length);
+      }
+      let bestIdx = 0,
+        bestScore = -Infinity;
+      for (let i = 0; i < cs.length; i++) {
+        const c = cs[i],
+          key = c.kind + ':' + c.k;
+        const rk = bp.ranks[key] !== undefined ? bp.ranks[key] : bp.ranks[c.k];
+        const rank = rk !== undefined ? rk : 8;
+        const w = (bp.weights && bp.weights[key] !== undefined) ? bp.weights[key] : 1;
+        let score = Math.max(0.5, 11 - rank) * w;
+        if (c.kind === 'e') score += 50;
+        if (c.kind === 'i' || c.kind === 'x') score += 2;
+        score += Math.random() * 0.01; // jitter so equal ranks diversify
+        if (score > bestScore) {
+          bestScore = score;
+          bestIdx = i;
+        }
+      }
+      return bestIdx;
+    }
+
     function cards() {
       const out = [],
         ws = Object.keys(G.w),
         pss = Object.keys(G.ps);
+      // Get build profile from simulator
+      let bp = null;
+      if (typeof window !== 'undefined') {
+        bp = window.simBuildProfile || buildProfile;
+      }
+      function getWeight(k, kind) {
+        if (!bp || !bp.ranks) return null;
+        const key = kind + ':' + k;
+        const rk = bp.ranks[key] || bp.ranks[k];
+        if (rk !== undefined) {
+          // rank 1 = highest priority = highest weight (always positive)
+          const base = Math.max(0.5, 11 - rk);
+          return base * (bp.weights && bp.weights[key] !== undefined ? bp.weights[key] : 1);
+        }
+        return null;
+      }
       for (const k of ws) {
         if (G.evo[k]) continue;
+        const w = getWeight(k, 'w');
         if (G.w[k] < 5) out.push({
           k,
           kind: 'w',
           lv: G.w[k] + 1,
-          wt: 3
+          wt: w !== null ? w : 3
         });
         else if (G.ps[WP[k].ev]) out.push({
           k,
           kind: 'e',
-          wt: 100
+          wt: w !== null ? w * 10 : 100
         })
       }
       if (ws.length < (G.slotW || 4))
         for (const k in WP)
-          if (!G.w[k]) out.push({
-            k,
-            kind: 'w',
-            lv: 1,
-            wt: 2
-          });
+          if (!G.w[k]) {
+            const w = getWeight(k, 'w');
+            out.push({
+              k,
+              kind: 'w',
+              lv: 1,
+              wt: w !== null ? w : 2
+            });
+          }
       for (const k of pss)
-        if (G.ps[k] < 5) out.push({
-          k,
-          kind: 'p',
-          lv: G.ps[k] + 1,
-          wt: 2
-        });
-      if (pss.length < (G.slotP || 4))
-        for (const k in PS)
-          if (!G.ps[k]) out.push({
+        if (G.ps[k] < 5) {
+          const w = getWeight(k, 'p');
+          out.push({
             k,
             kind: 'p',
-            lv: 1,
-            wt: 1.5
+            lv: G.ps[k] + 1,
+            wt: w !== null ? w : 2
           });
-      if (md('dash') && (G.dashLv || 0) > 0 && G.dashLv < 5) out.push({
-        k: 'dash',
-        kind: 'm',
-        lv: G.dashLv + 1,
-        wt: 1.1
-      });
+        }
+      if (pss.length < (G.slotP || 4))
+        for (const k in PS)
+          if (!G.ps[k]) {
+            const w = getWeight(k, 'p');
+            out.push({
+              k,
+              kind: 'p',
+              lv: 1,
+              wt: w !== null ? w : 1.5
+            });
+          }
+      if (md('dash') && (G.dashLv || 0) > 0 && G.dashLv < 5) {
+        const w = getWeight('dash', 'm');
+        out.push({
+          k: 'dash',
+          kind: 'm',
+          lv: G.dashLv + 1,
+          wt: w !== null ? w : 1.1
+        });
+      }
       if (md('walls') && G.wallLv > 0) {
+        const w = getWeight('walls', 'm');
         if (!G.wallEvo && G.wallLv < 5) out.push({
           k: 'walls',
           kind: 'm',
           lv: G.wallLv + 1,
-          wt: 1.3
+          wt: w !== null ? w : 1.3
         });
         if (!G.wallEvo && G.wallLv >= 5 && G.ps.armor) out.push({
           k: 'walls',
           kind: 'e',
-          wt: 100
+          wt: w !== null ? w * 10 : 100
         })
       }
-      const n = 3 + M.choice,
+      const n = 3 + (M.choice || 0),
         pick = [];
       const ev = out.filter(o => o.kind === 'e');
       if (ev.length) pick.push(ev[0]);
@@ -1773,6 +1934,10 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       if (scene !== 'play' || !G) return;
       if (G.over) {
         G.over.t += dt;
+        if (!window.simOverSent) {
+          window.simOverSent = true;
+          sendGameState();
+        }
         return
       }
       if (G.paused || G.choice) {
@@ -1782,7 +1947,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
           if (window.simAutoPlay && G.choice.t > 0.35) {
             const cards = G.choice.cards;
             if (cards && cards.length > 0) {
-              const idx = Math.floor(Math.random() * cards.length);
+              const idx = simPickCardIndex(cards);
               const c = cards[idx];
               cards.splice(idx, 1);
               choose(c);
@@ -1932,9 +2097,12 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         
         // Send telemetry periodically
         if (!window.simTelemetryTimer) window.simTelemetryTimer = 0;
+        if (!window.simTelemetryWall) window.simTelemetryWall = 0;
         window.simTelemetryTimer += dt;
-        if (window.simTelemetryTimer >= 0.5) {
+        const teleWall = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (window.simTelemetryTimer >= 0.5 && teleWall - window.simTelemetryWall >= 500) {
           window.simTelemetryTimer = 0;
+          window.simTelemetryWall = teleWall;
           sendTelemetry();
         }
       }
@@ -3955,14 +4123,14 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         hw = W / Z / 2 + m,
         hh = H / Z / 2 + m,
         per = 2 * (hw + hh),
-        r = Math.random() * per;
+        r = vrand() * per;
       let ex, ey;
       if (r < 2 * hw) {
         ex = -hw + r;
-        ey = Math.random() < .5 ? -hh : hh
+        ey = vrand() < .5 ? -hh : hh
       } else {
         ey = -hh + (r - 2 * hw);
-        ex = Math.random() < .5 ? -hw : hw
+        ex = vrand() < .5 ? -hw : hw
       }
       return [p.x + ex, p.y + ey]
     }
@@ -4016,8 +4184,8 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         ph = PHASE[Math.min(PHASE.length - 1, g.phase)];
       const Zo = Z * (1 - .15 * zoomT);
       x.save();
-      const sx = (Math.random() - .5) * shake * U,
-        sy = (Math.random() - .5) * shake * U;
+      const sx = (vrand() - .5) * shake * U,
+        sy = (vrand() - .5) * shake * U;
       x.translate(W / 2 + sx, H / 2 + sy);
       x.scale(Zo, Zo);
       x.translate(-p.x, -p.y);
@@ -4301,7 +4469,7 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
         x.moveTo(xx, yy);
         while (yy < b.y) {
           yy += 20;
-          xx = b.x + rnd(-8, 8);
+          xx = b.x + vrnd(-8, 8);
           x.lineTo(yy >= b.y ? b.x : xx, Math.min(yy, b.y))
         }
         x.stroke();
@@ -4788,26 +4956,26 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
       x.scale(pl, pl);
       x.translate(-W / 2, -(H * .64 + 29 * U));
       button('▶ PLAY', W / 2 - 105 * U, H * .64, 210 * U, 58 * U, () => go('chars'), '#c8452f', 26, false, menuSel.title === 0);
-      button('↺ REPLAY', W / 2 - 105 * U, H * .64 + 70 * U, 210 * U, 48 * U, () => { replayMode = true; replayIndex = Math.max(0,(replayData||[]).length-200); scene='play'; if(G)G.paused=true; toast={t:'REPLAY MODE',l:1.5}; }, '#6ab0ff', 20, false, menuSel.title === 1);
       x.restore();
-      button('UPGRADES', W / 2 - 105 * U, H * .64 + 70 * U, 102 * U, 46 * U, () => go('shop'), '#5fae7a', 14, false, menuSel.title === 2);
-      button('MODS', W / 2 + 3 * U, H * .64 + 70 * U, 102 * U, 46 * U, () => {
+      button('↺ REPLAY', W / 2 - 105 * U, H * .64 + 70 * U, 210 * U, 42 * U, () => { replayMode = true; replayIndex = Math.max(0,(replayData||[]).length-200); scene='play'; if(G)G.paused=true; toast={t:'REPLAY MODE',l:1.5}; }, '#6ab0ff', 18, false, menuSel.title === 1);
+      button('UPGRADES', W / 2 - 105 * U, H * .64 + 122 * U, 102 * U, 42 * U, () => go('shop'), '#5fae7a', 14, false, menuSel.title === 2);
+      button('MODS', W / 2 + 3 * U, H * .64 + 122 * U, 102 * U, 42 * U, () => {
         modsBack = 'title';
         go('mods')
       }, '#6a5acd', 14, false, menuSel.title === 3);
-      txt('v0.1.1', W / 2, H * .64 + 136 * U, 11, pal.paper);
-      txt('CHANGELOG', W / 2, H * .64 + 152 * U, 11, pal.paper, 'center', false);
-      txt('Drag to move · auto attack · pick upgrades', W / 2, H * .64 + 136 * U, 11, pal.paper);
-      button(S.muted ? '♪×' : '♪', 10 * U, H - 44 * U, 40 * U, 30 * U, () => {
+      txt('Drag to move · auto attack · pick upgrades', W / 2, H * .64 + 178 * U, 11, pal.paper);
+      txt('v0.1.1', W / 2, H * .64 + 194 * U, 10, pal.paper);
+      txt('CHANGELOG', W / 2, H * .64 + 210 * U, 10, '#ffd23f', 'center', false);
+      button(S.muted ? '♪×' : '♪', 10 * U, H - 40 * U, 36 * U, 28 * U, () => {
         S.muted = !S.muted;
         save()
-      }, '#8b5a2b', 14, false, menuSel.title === 4);
-      button('■', 58 * U, H - 44 * U, 40 * U, 30 * U, () => {
+      }, '#8b5a2b', 12, false, menuSel.title === 4);
+      button('■', 54 * U, H - 40 * U, 36 * U, 28 * U, () => {
         S.mods.qa = !S.mods.qa;
         save();
         sfx.click()
-      }, '#6a5acd', 14, false, menuSel.title === 5);
-      button('⟳', 76 * U, H - 44 * U, 40 * U, 30 * U, async () => {
+      }, '#6a5acd', 12, false, menuSel.title === 5);
+      button('⟳', 98 * U, H - 40 * U, 36 * U, 28 * U, async () => {
         toast = {
           t: 'Updating...',
           l: 3
@@ -4989,32 +5157,66 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     }
   }
 
+  let simAccum = 0;
   function loop(t) {
-    let dt = Math.max(0, Math.min(.05, (t - t0) / 1000));
+    let realDt = Math.max(0, Math.min(.1, (t - t0) / 1000));
     t0 = t;
-    // Apply simulator time scale
-    if (window.simTimeScale && window.simTimeScale !== 1) {
-      dt *= window.simTimeScale;
+    const scale = window.simTimeScale || 1;
+    const FIXED = 1 / 60;
+    // Determine how much simulation time to consume this frame.
+    // Fixed small steps keep physics/collisions accurate even at high speed,
+    // which matters for the build analyzer / balance analysis.
+    let target;
+    if (scale >= 999) {
+      target = 200 * FIXED; // MAX: fixed 200 steps/frame (~3.3s game-time)
+    } else if (scale >= 100) {
+      target = 100 * FIXED; // ~100x realtime, still accurate
+    } else {
+      target = realDt * scale;
     }
     // Handle step mode
     if (window.simStepMode) {
-      dt = Math.min(dt, 1/60);
+      target = Math.min(target, FIXED);
       window.simStepMode = false;
       if (G) G.paused = true;
     }
-    for (let i = 0; i < speedMul; i++) update(dt);
+    simAccum += target;
+    let steps = Math.floor(simAccum / FIXED);
+    if (steps > 600) steps = 600; // safety cap
+    simAccum -= steps * FIXED;
+    let simDt = 0;
+    for (let j = 0; j < steps; j++) {
+      // Stop precisely at the analysis time limit instead of overshooting it.
+      if (window.simTimeLimit && typeof G !== 'undefined' && G && scene === 'play' && !G.over && G.t >= window.simTimeLimit) {
+        G.paused = true;
+        if (!window.simLimitSent) {
+          window.simLimitSent = true;
+          sendGameState();
+        }
+        break;
+      }
+      for (let i = 0; i < speedMul; i++) update(FIXED);
+      simDt += FIXED * speedMul;
+      if (window.simDbg) { window.simDbg.steps = (window.simDbg.steps || 0) + 1; }
+    }
     // Record replay
     if (replayRecording && scene === 'play' && typeof G !== 'undefined' && G && G.p) {
       if (!replayData) replayData = [];
       if (replayData.length > 5000) replayData.shift();
       replayData.push({t: G.t, x: G.p.x, y: G.p.y, hp: G.p.hp, kills: G.kills, lvl: G.lvl});
     }
-    draw();
+    if (window.simDbg) window.simDbg.draws = (window.simDbg.draws || 0) + 1;
+    if (window.simRender !== false) draw();
     // Send state updates periodically
     if (!window.simStateTimer) window.simStateTimer = 0;
-    window.simStateTimer += dt;
-    if (window.simStateTimer >= 0.2) {
+    if (!window.simStateWall) window.simStateWall = 0;
+    window.simStateTimer += simDt;
+    const nowWall = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    // Throttle to ~12 updates/sec of wall time even at very high time scales,
+    // so the simulator/analyzer isn't flooded by postMessage traffic.
+    if (window.simStateTimer >= 0.2 && nowWall - window.simStateWall >= 80) {
       window.simStateTimer = 0;
+      window.simStateWall = nowWall;
       sendGameState();
     }
     requestAnimationFrame(loop)
@@ -5060,36 +5262,38 @@ canvas{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100d
     const {
       px,
       pw
-    } = panel(.04, .92);
-    pix('MODS / PLUGINS', W / 2, H * .04 + 30 * U, 18, '#c9a0ff', 1.5);
-    const rh = Math.max(66 * U, (H * .92 - 190 * U) / MDL.length);
+    } = panel(.02, .96);
+    pix('MODS / PLUGINS', W / 2, H * .02 + 30 * U, 18, '#c9a0ff', 1.5);
+    const rh = Math.max(72 * U, Math.min(90 * U, (H * .96 - 200 * U) / MDL.length));
+    const startY = H * .02 + 70 * U;
     MDL.forEach((m, i) => {
-      const y = H * .04 + 66 * U + i * rh,
+      const y = startY + i * rh,
         on = !!S.mods[m.id];
-      rr(px + 14 * U, y, pw - 28 * U, rh - 8 * U, 10 * U, on ? '#f3e2b8' : '#ddd0ac', menuSel.mods === i ? '#ffd23f' : pal.ink, menuSel.mods === i ? 4 : 2);
+      rr(px + 12 * U, y, pw - 24 * U, rh - 6 * U, 10 * U, on ? '#f3e2b8' : '#ddd0ac', menuSel.mods === i ? '#ffd23f' : pal.ink, menuSel.mods === i ? 4 : 2);
       x.globalAlpha = on ? 1 : .55;
-      txt(m.n, px + 22 * U, y + 20 * U, 13, pal.ink, 'left', false);
-      txt(m.d.length > 40 ? m.d.slice(0, 40) + '…' : m.d, px + 22 * U, y + 38 * U, 9, '#5a4030', 'left', false);
-      button(on ? 'ON' : 'OFF', px + pw - 76 * U, y + (rh - 38 * U) / 2, 58 * U, 28 * U, () => {
+      txt(m.n, px + 18 * U, y + 16 * U, 12, pal.ink, 'left', false);
+      const d = m.d.length > 35 ? m.d.slice(0, 35) + '…' : m.d;
+      txt(d, px + 18 * U, y + 30 * U, 8, '#5a4030', 'left', false);
+      button(on ? 'ON' : 'OFF', px + pw - 70 * U, y + 8 * U, 52 * U, 26 * U, () => {
         S.mods[m.id] = on ? 0 : 1;
         save();
         sfx.click()
-      }, on ? '#5fae7a' : '#8b5a2b', 11, false, menuSel.mods === i);
-      if (m.id === 'speed' && on) button('FEEL: ' + (S.mods.speedCurve ? 'RESPONSIVE' : 'LINEAR'), px + 22 * U, y + rh - 36 * U, 150 * U, 24 * U, () => {
+      }, on ? '#5fae7a' : '#8b5a2b', 10, false, menuSel.mods === i);
+      if (m.id === 'speed' && on) button('FEEL: ' + (S.mods.speedCurve ? 'RESPONSIVE' : 'LINEAR'), px + 18 * U, y + rh - 28 * U, 130 * U, 22 * U, () => {
         S.mods.speedCurve = S.mods.speedCurve ? 0 : 1;
         save();
         sfx.click()
-      }, '#6a5acd', 9, false, false);
-      else if (m.id === 'dash') txt(S.mods.dash ? 'Level up via cards · SHIFT key + » button' : 'Off: no dash in your runs', px + 22 * U, y + rh - 32 * U, 9, on ? '#8b6a3a' : '#a08a6a', 'left', false);
-      else if (m.id === 'walls') txt(S.mods.walls ? 'Tap ▬ / E to draw · evolve w/ Armor' : 'Off: no walls in your runs', px + 22 * U, y + rh - 32 * U, 9, on ? '#8b6a3a' : '#a08a6a', 'left', false);
-      else if (m.id === 'leftHand') txt(S.mods.leftHand ? 'Buttons: lower right · joystick: left thumb' : 'Buttons: lower left (default)', px + 22 * U, y + rh - 32 * U, 9, on ? '#8b6a3a' : '#a08a6a', 'left', false);
-      else if (m.id === 'numKeys') txt(S.mods.numKeys ? '1-4 keys pick cards' : 'Mouse pick cards', px + 22 * U, y + rh - 32 * U, 9, on ? '#8b6a3a' : '#a08a6a', 'left', false);
-      else if (m.id === 'disableTracking') txt(S.mods.disableTracking ? 'Data tracking disabled' : 'Enable data tracking', px + 22 * U, y + rh - 32 * U, 9, on ? '#8b6a3a' : '#a08a6a', 'left', false);
-      else if (m.id === 'timeFreeze') txt(S.mods.timeFreeze ? 'Freeze ability: long cooldown freezes enemies' : 'Time freeze ability disabled', px + 22 * U, y + rh - 32 * U, 9, on ? '#8b6a3a' : '#a08a6a', 'left', false);
-      else if (m.id === 'areaClear') txt(S.mods.areaClear ? 'Area clear ability: impulse/repulse blast on enemies' : 'Area clear ability disabled', px + 22 * U, y + rh - 32 * U, 9, on ? '#8b6a3a' : '#a08a6a', 'left', false);
+      }, '#6a5acd', 8, false, false);
+      else if (m.id === 'dash') txt(S.mods.dash ? 'Cards + SHIFT/» button' : 'Off', px + 18 * U, y + rh - 24 * U, 8, on ? '#8b6a3a' : '#a08a6a', 'left', false);
+      else if (m.id === 'walls') txt(S.mods.walls ? 'E/▬ · evolve w/ Armor' : 'Off', px + 18 * U, y + rh - 24 * U, 8, on ? '#8b6a3a' : '#a08a6a', 'left', false);
+      else if (m.id === 'leftHand') txt(S.mods.leftHand ? 'Right thumb' : 'Left default', px + 18 * U, y + rh - 24 * U, 8, on ? '#8b6a3a' : '#a08a6a', 'left', false);
+      else if (m.id === 'numKeys') txt(S.mods.numKeys ? '1-4 keys' : 'Mouse only', px + 18 * U, y + rh - 24 * U, 8, on ? '#8b6a3a' : '#a08a6a', 'left', false);
+      else if (m.id === 'disableTracking') txt(S.mods.disableTracking ? 'Disabled' : 'Enabled', px + 18 * U, y + rh - 24 * U, 8, on ? '#8b6a3a' : '#a08a6a', 'left', false);
+      else if (m.id === 'timeFreeze') txt(S.mods.timeFreeze ? 'Active' : 'Off', px + 18 * U, y + rh - 24 * U, 8, on ? '#8b6a3a' : '#a08a6a', 'left', false);
+      else if (m.id === 'areaClear') txt(S.mods.areaClear ? 'Active' : 'Off', px + 18 * U, y + rh - 24 * U, 8, on ? '#8b6a3a' : '#a08a6a', 'left', false);
       x.globalAlpha = 1
     });
-    button('BACK', W / 2 - 60 * U, H * .95 - 46 * U, 120 * U, 38 * U, () => {
+    button('BACK', W / 2 - 50 * U, H * .98 - 40 * U, 100 * U, 34 * U, () => {
       if (modsBack === 'pause' && G) G.paused = true;
       go(modsBack === 'pause' ? 'play' : 'title')
     }, '#8b5a2b', 14, false, menuSel.mods === MDL.length)

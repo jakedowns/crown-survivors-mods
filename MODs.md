@@ -7,6 +7,8 @@
 
 - [x] [agent no. 3]: implemented new mod: tap shift to dash, hold shift to use wall draw (+ 2x all wall draw max draw + durability to make it feel more substantial/meaningful (buff))
 
+- [x] [agent no. 3]: created **STATS.md** — comprehensive reference for all numerical values: characters, weapons, passives, endless upgrades, meta upgrades, dash/walls, enemies, bosses, scaling formulas, XP curve, curse, revive, gold economy, weapon level tables
+
 - [ ] fix: make sure dash goes in the direction you were last going in, add a slight "skid" post-dash based on impulse force applied.
 
 - [ ] todo: add STATs.md that lists player leveling, ability leveling, enemy descriptions, all numerical stats used in constants / multipliers / dmg / hp / etc for quick reference / understanding by new players / contributors (we'll make sure to keep it in sync with real values in code somehow...)

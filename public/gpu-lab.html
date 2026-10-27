@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Crown Survivors - GPU Engine Lab</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { background: #14100a; color: #e8d5b8; font-family: system-ui, sans-serif; min-height: 100%; }
+    body { padding: 20px; }
+    h1 { color: #e0a526; font-size: 20px; margin-bottom: 4px; }
+    h2 { color: #e0a526; font-size: 14px; margin: 18px 0 8px; }
+    .sub { color: #9a8768; font-size: 12px; margin-bottom: 16px; }
+    a { color: #6ab0ff; }
+    .panel { background: #221a10; border: 1px solid #3d2a1a; border-radius: 6px; padding: 14px; margin-bottom: 14px; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: #b8a482; }
+    input, select { background: #14100a; color: #e8d5b8; border: 1px solid #3d2a1a; border-radius: 3px; padding: 5px 7px; font-size: 12px; width: 90px; }
+    button { background: #2a1d10; color: #e8d5b8; border: 1px solid #3d2a1a; border-radius: 4px; padding: 7px 12px; font-size: 12px; cursor: pointer; }
+    button:hover { background: #3d2a1a; }
+    button.primary { background: #5fae7a; border-color: #5fae7a; color: #14100a; font-weight: bold; }
+    button.gpu { background: #6a5acd; border-color: #6a5acd; color: #fff; }
+    button:disabled { opacity: .45; cursor: default; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 10px; font-size: 11px; margin-left: 8px; }
+    .badge.ok { background: #1e3a24; color: #9be3a8; }
+    .badge.warn { background: #3a2a1e; color: #e0c080; }
+    .badge.bad { background: #3a1e1e; color: #f0a090; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: right; padding: 5px 7px; border-bottom: 1px solid #2a1d10; white-space: nowrap; }
+    th { color: #9a8768; font-weight: normal; font-size: 11px; }
+    td:first-child, th:first-child { text-align: left; }
+    tr.engine-c td:first-child { color: #c9a0ff; }
+    tr.engine-d td:first-child { color: #6ab0ff; }
+    #log { font-family: monospace; font-size: 11px; max-height: 180px; overflow: auto; background: #14100a; border: 1px solid #2a1d10; border-radius: 4px; padding: 8px; }
+    .log-line { padding: 1px 0; }
+    .log-line.err { color: #f0a090; }
+    .log-line.ok { color: #9be3a8; }
+    .log-line.warn { color: #e0c080; }
+    pre { font-family: monospace; font-size: 11px; white-space: pre-wrap; word-break: break-word; background: #14100a; border: 1px solid #2a1d10; border-radius: 4px; padding: 10px; max-height: 400px; overflow: auto; }
+    .note { font-size: 12px; color: #b8a482; line-height: 1.55; }
+    .note b { color: #e8d5b8; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>⚔️ Crown Survivors — GPU Engine Lab</h1>
+  <div class="sub">
+    Engine C: WGSL compute-shader horde kernel. Engine D: hybrid CPU-worker + GPU scheduler.
+    <span id="adapterBadge" class="badge warn">probing WebGPU…</span>
+    · <a href="simulator.html">← Simulator</a>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <label>Runs <input id="runs" type="number" value="8" min="1" max="4096" step="1"></label>
+      <label>Enemies / run <input id="enemies" type="number" value="128" min="8" max="4096" step="8"></label>
+      <label>Projectiles / run <input id="projectiles" type="number" value="64" min="4" max="2048" step="4"></label>
+      <label>Steps <input id="steps" type="number" value="90" min="1" max="100000" step="1"></label>
+      <label>Seed <input id="seed" type="number" value="12345" min="0" step="1"></label>
+      <label>CPU workers <input id="workers" type="number" value="4" min="1" max="64" step="1"></label>
+      <label>Hybrid GPU runs <input id="gpuRuns" type="number" value="8" min="0" max="4096" step="1"></label>
+    </div>
+    <div class="row" style="margin-top: 12px;">
+      <button id="btnValidate">Validate CPU vs GPU</button>
+      <button id="btnCpu1">CPU ×1</button>
+      <button id="btnCpuN">CPU ×workers</button>
+      <button class="gpu" id="btnGpu">Engine C · GPU</button>
+      <button class="gpu" id="btnHybrid">Engine D · Hybrid</button>
+      <button class="primary" id="btnAll">Run all</button>
+      <button id="btnExport">Export JSON</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2 style="margin-top: 0;">Results</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Mode</th><th>Runs</th><th>Steps</th><th>Wall ms</th>
+          <th>Run-steps/s</th><th>Game s/s</th><th>vs CPU ×1</th>
+          <th>Kills</th><th>Damage</th><th>Over</th><th>Hash</th>
+        </tr>
+      </thead>
+      <tbody id="resultsBody">
+        <tr><td colspan="11" style="text-align:left;color:#9a8768;">No runs yet.</td></tr>
+      </tbody>
+    </table>
+    <div class="sub" style="margin: 8px 0 0;">
+      “vs CPU ×1” is normalized per-run throughput, so CPU ×workers should scale with worker count.
+      GPU/hybrid numbers include kernel dispatch overhead; GPU shader compilation and warm-up are excluded.
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="panel">
+      <h2 style="margin-top: 0;">Log</h2>
+      <div id="log"></div>
+    </div>
+    <div class="panel">
+      <h2 style="margin-top: 0;">Raw results</h2>
+      <pre id="raw">Run a benchmark to populate this.</pre>
+    </div>
+  </div>
+
+  <div class="panel note">
+    <b>What this measures.</b> The kernel is shaped like Crown Survivors' hot loop: enemies chase the player,
+    all-pairs separation, projectile travel and first-hit selection, damage application, edge respawns, contact
+    damage. It is intentionally data-parallel and deterministic (no atomics, fixed loop order).<br><br>
+    <b>What this is not.</b> It is not the authoritative game core. Boss behaviours, card choices, evolutions,
+    walls, dash, and dynamic entity lifecycles remain branch-heavy and sequential. A complete WGSL port would
+    duplicate the Rust core and risk parity drift; Engine D keeps WASM authoritative and uses the GPU where it
+    actually wins.<br><br>
+    <b>Determinism.</b> Same device + same dispatch order is run-to-run stable. Cross-vendor bit-exact parity is
+    not guaranteed by f32 compute; if the GPU ever becomes authoritative, the kernel needs fixed-point math
+    and a parity gate against the WASM core.
+  </div>
+
+  <script src="gpu-sim.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    var results = [];
+    var busy = false;
+    var adapter = null;
+
+    function el(id) { return document.getElementById(id); }
+
+    function log(msg, type) {
+      var line = document.createElement('div');
+      line.className = 'log-line ' + (type || '');
+      line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+      el('log').insertBefore(line, el('log').firstChild);
+      while (el('log').children.length > 80) el('log').removeChild(el('log').lastChild);
+    }
+
+    function setBusy(v) {
+      busy = v;
+      ['btnValidate', 'btnCpu1', 'btnCpuN', 'btnGpu', 'btnHybrid', 'btnAll', 'btnExport'].forEach(function (id) {
+        el(id).disabled = v;
+      });
+    }
+
+    function num(id, fallback) {
+      var v = parseFloat(el(id).value);
+      return isFinite(v) ? v : fallback;
+    }
+
+    function config() {
+      return {
+        runs: Math.max(1, num('runs', 8) | 0),
+        maxEnemies: Math.max(8, num('enemies', 128) | 0),
+        maxProjectiles: Math.max(4, num('projectiles', 64) | 0),
+        seed: num('seed', 12345) >>> 0,
+        spawnRate: 6,
+        enemySpeed: 55,
+        enemyHp: 20,
+        enemyDmg: 0.01,
+        projSpeed: 520,
+        projDmg: 2,
+        projRadius: 6,
+        enemyRadius: 8,
+        playerRadius: 14,
+        worldW: 960,
+        worldH: 540,
+        dt: 1 / 60,
+        sepRadius: 22,
+        sepForce: 90
+      };
+    }
+
+    function fmt(n, digits) {
+      if (n === null || n === undefined || !isFinite(n)) return '—';
+      if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+      if (Math.abs(n) >= 1e4) return (n / 1e3).toFixed(2) + 'k';
+      return digits === undefined ? Math.round(n).toLocaleString() : n.toFixed(digits);
+    }
+
+    function addRow(r) {
+      results.push(r);
+      var tbody = el('resultsBody');
+      if (tbody.firstChild && tbody.firstChild.children.length === 1) tbody.innerHTML = '';
+      var tr = document.createElement('tr');
+      if (r.engine === 'C') tr.className = 'engine-c';
+      if (r.engine === 'D') tr.className = 'engine-d';
+      var cls = r.error ? ' style="color:#f0a090"' : '';
+      tr.innerHTML =
+        '<td' + cls + '>' + r.mode + '</td>' +
+        '<td>' + (r.runs || 0) + '</td>' +
+        '<td>' + (r.steps || 0) + '</td>' +
+        '<td>' + fmt(r.ms, 1) + '</td>' +
+        '<td>' + fmt(r.runStepsPerSec) + '</td>' +
+        '<td>' + fmt(r.gameSecondsPerSec, 1) + '</td>' +
+        '<td>' + (r.speedup ? r.speedup.toFixed(2) + '×' : '—') + '</td>' +
+        '<td>' + fmt(r.kills) + '</td>' +
+        '<td>' + fmt(r.damage) + '</td>' +
+        '<td>' + (r.over === undefined ? '—' : r.over) + '</td>' +
+        '<td title="' + (r.hash === undefined ? '' : '0x' + (r.hash >>> 0).toString(16)) + '">' +
+        (r.hash === undefined ? '—' : '0x' + (r.hash >>> 0).toString(16)) + '</td>';
+      tbody.appendChild(tr);
+      el('raw').textContent = JSON.stringify(results, null, 2);
+    }
+
+    function baseResult(mode, engine, cfg, steps, ms, metrics, extra) {
+      var runSteps = (cfg.runs || 0) * steps;
+      var perSec = ms > 0 ? runSteps / (ms / 1000) : 0;
+      return Object.assign({
+        mode: mode,
+        engine: engine,
+        runs: cfg.runs,
+        steps: steps,
+        ms: ms,
+        runStepsPerSec: perSec,
+        gameSecondsPerSec: perSec / 60,
+        kills: metrics ? metrics.totalKills : 0,
+        damage: metrics ? metrics.totalDamage : 0,
+        over: metrics ? metrics.over : 0
+      }, extra || {});
+    }
+
+    var cpuBaseline = 0;
+
+    function noteBaseline(perSec) {
+      if (!cpuBaseline) cpuBaseline = perSec;
+    }
+
+    function speedupFor(perSec) {
+      return cpuBaseline ? perSec / cpuBaseline : 0;
+    }
+
+    async function runCpuSingle() {
+      var cfg = config();
+      var steps = Math.max(1, num('steps', 90) | 0);
+      log('CPU ×1: ' + cfg.runs + ' runs × ' + steps + ' steps, ' + cfg.maxEnemies + ' enemies/run');
+      var out = CrownGpuSim.runCpuSingle(cfg, steps);
+      noteBaseline(out.metrics.count ? out.metrics.count * steps / (out.ms / 1000) : 0);
+      var row = baseResult('CPU ×1', 'CPU', cfg, steps, out.ms, out.metrics, {
+        hash: out.hash,
+        speedup: speedupFor(out.metrics.count * steps / (out.ms / 1000))
+      });
+      addRow(row);
+      log('CPU ×1: ' + fmt(row.runStepsPerSec) + ' run-steps/s (' + fmt(row.ms, 1) + ' ms)', 'ok');
+      return row;
+    }
+
+    async function runCpuWorkers() {
+      var cfg = config();
+      var steps = Math.max(1, num('steps', 90) | 0);
+      var workers = Math.max(1, Math.min(num('workers', 4) | 0, cfg.runs));
+      log('CPU ×' + workers + ': ' + cfg.runs + ' runs × ' + steps + ' steps');
+      var out = await CrownGpuSim.runCpuWorkers(cfg, workers, steps);
+      var perSec = out.metrics.count * steps / (out.ms / 1000);
+      noteBaseline(perSec / Math.max(1, out.workers));
+      var row = baseResult('CPU ×' + out.workers + ' workers', 'CPU', cfg, steps, out.ms, out.metrics, {
+        speedup: speedupFor(perSec)
+      });
+      addRow(row);
+      log('CPU ×' + out.workers + ': ' + fmt(row.runStepsPerSec) + ' run-steps/s, ' + row.speedup.toFixed(2) + '× vs 1 core', 'ok');
+      return row;
+    }
+
+    async function runGpu() {
+      var cfg = config();
+      var steps = Math.max(1, num('steps', 90) | 0);
+      log('Engine C GPU: ' + cfg.runs + ' runs × ' + steps + ' steps, ' + cfg.maxEnemies + ' enemies/run');
+      var t0 = performance.now();
+      var engine = await CrownGpuSim.createGpuEngine(cfg);
+      log('GPU pipeline ready in ' + fmt(performance.now() - t0, 1) + ' ms');
+      await engine.run(2); // warm-up: compile + first dispatch
+      var timing = await engine.run(steps);
+      var state = await engine.readState();
+      var metrics = CrownGpuSim.metrics(state);
+      var hash = CrownGpuSim.hashState(state);
+      engine.destroy();
+      var perSec = cfg.runs * steps / (timing.ms / 1000);
+      var row = baseResult('Engine C · GPU', 'C', cfg, steps, timing.ms, metrics, {
+        hash: hash,
+        speedup: speedupFor(perSec)
+      });
+      addRow(row);
+      log('GPU: ' + fmt(row.runStepsPerSec) + ' run-steps/s, ' + row.speedup.toFixed(2) + '× vs CPU ×1', 'ok');
+      return row;
+    }
+
+    async function runHybrid() {
+      var cfg = config();
+      var steps = Math.max(1, num('steps', 90) | 0);
+      var workers = Math.max(1, Math.min(num('workers', 4) | 0, cfg.runs));
+      var gpuRuns = Math.max(0, Math.min(cfg.runs, num('gpuRuns', Math.ceil(cfg.runs / 2)) | 0));
+      log('Engine D hybrid: ' + cfg.runs + ' runs (' + gpuRuns + ' GPU + ' + (cfg.runs - gpuRuns) + ' CPU), ' + workers + ' workers');
+      var out = await CrownGpuSim.runHybrid(cfg, {
+        steps: steps,
+        workers: workers,
+        gpuRuns: gpuRuns
+      });
+      var perSec = out.metrics.count * steps / (out.wallMs / 1000);
+      var row = baseResult('Engine D · ' + gpuRuns + ' GPU + ' + (cfg.runs - gpuRuns) + ' CPU', 'D', cfg, steps, out.wallMs, out.metrics, {
+        speedup: speedupFor(perSec),
+        gpuMs: out.gpu.ms,
+        cpuMs: out.cpu.ms
+      });
+      addRow(row);
+      log('Hybrid: ' + fmt(row.runStepsPerSec) + ' run-steps/s, ' + row.speedup.toFixed(2) + '× vs CPU ×1' +
+        ' (GPU ' + fmt(out.gpu.ms, 1) + ' ms, CPU ' + fmt(out.cpu.ms, 1) + ' ms)', 'ok');
+      return row;
+    }
+
+    async function validate() {
+      var cfg = config();
+      log('Validating 1-step CPU vs GPU equivalence…');
+      var out = await CrownGpuSim.validate(cfg);
+      if (out.ok) {
+        log('Validation passed: per-run hp/kills/alive/damage/steps agree within 0.01', 'ok');
+      } else {
+        log('Validation differences: ' + JSON.stringify(out.diffs.slice(0, 8)), 'err');
+      }
+      var row = {
+        mode: 'Validate CPU vs GPU',
+        engine: 'C',
+        runs: out.cpu.count,
+        steps: 1,
+        ms: 0,
+        runStepsPerSec: 0,
+        gameSecondsPerSec: 0,
+        kills: out.cpu.totalKills,
+        damage: out.cpu.totalDamage,
+        over: out.cpu.over,
+        hash: undefined,
+        error: !out.ok,
+        diffs: out.diffs
+      };
+      addRow(row);
+      return out;
+    }
+
+    async function determinism() {
+      var cfg = Object.assign(config(), { runs: 4, maxEnemies: 64, maxProjectiles: 32 });
+      var steps = 30;
+      log('Checking GPU run-to-run determinism over ' + steps + ' steps…');
+      var a = await CrownGpuSim.createGpuEngine(cfg);
+      await a.run(steps);
+      var sa = await a.readState();
+      a.destroy();
+      var b = await CrownGpuSim.createGpuEngine(cfg);
+      await b.run(steps);
+      var sb = await b.readState();
+      b.destroy();
+      var ha = CrownGpuSim.hashState(sa);
+      var hb = CrownGpuSim.hashState(sb);
+      var ok = ha === hb;
+      log('GPU determinism: ' + (ok ? 'identical hash 0x' + (ha >>> 0).toString(16) : 'DIVERGED 0x' + (ha >>> 0).toString(16) + ' vs 0x' + (hb >>> 0).toString(16)), ok ? 'ok' : 'err');
+      return { ok: ok, hash: ha, other: hb };
+    }
+
+    async function runAll() {
+      if (busy) return;
+      setBusy(true);
+      results = [];
+      cpuBaseline = 0;
+      el('resultsBody').innerHTML = '';
+      try {
+        await validate();
+        await runCpuSingle();
+        await runCpuWorkers();
+        await runGpu();
+        await runHybrid();
+        await determinism();
+      } catch (e) {
+        log('FAILED: ' + (e && e.stack || e), 'err');
+        addRow({ mode: 'ERROR', engine: '', runs: 0, steps: 0, ms: 0, runStepsPerSec: 0, gameSecondsPerSec: 0, kills: 0, damage: 0, error: true });
+      } finally {
+        setBusy(false);
+        log('All benchmarks complete.', 'ok');
+      }
+    }
+
+    async function autorun() {
+      // Smaller presets so headless SwiftShader finishes in a reasonable time.
+      el('runs').value = '8';
+      el('enemies').value = '128';
+      el('projectiles').value = '64';
+      el('steps').value = '90';
+      el('workers').value = String(Math.min(4, navigator.hardwareConcurrency || 2));
+      el('gpuRuns').value = '4';
+      await runAll();
+      var payload = {
+        completedAt: new Date().toISOString(),
+        agent: CrownGpuSim.agentInfo(),
+        adapter: adapter,
+        results: results
+      };
+      window.__GPU_RESULTS__ = payload;
+      el('raw').textContent = JSON.stringify(payload, null, 2);
+      document.title = 'GPU LAB DONE';
+      document.body.setAttribute('data-done', '1');
+    }
+
+    function exportJson() {
+      var payload = {
+        completedAt: new Date().toISOString(),
+        agent: CrownGpuSim.agentInfo(),
+        adapter: adapter,
+        results: results
+      };
+      var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'crown-gpu-lab-results.json';
+      a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    }
+
+    el('btnValidate').addEventListener('click', async function () { setBusy(true); try { await validate(); } catch (e) { log(String(e), 'err'); } setBusy(false); });
+    el('btnCpu1').addEventListener('click', async function () { setBusy(true); try { await runCpuSingle(); } catch (e) { log(String(e), 'err'); } setBusy(false); });
+    el('btnCpuN').addEventListener('click', async function () { setBusy(true); try { await runCpuWorkers(); } catch (e) { log(String(e), 'err'); } setBusy(false); });
+    el('btnGpu').addEventListener('click', async function () { setBusy(true); try { await runGpu(); } catch (e) { log(String(e), 'err'); } setBusy(false); });
+    el('btnHybrid').addEventListener('click', async function () { setBusy(true); try { await runHybrid(); } catch (e) { log(String(e), 'err'); } setBusy(false); });
+    el('btnAll').addEventListener('click', runAll);
+    el('btnExport').addEventListener('click', exportJson);
+
+    CrownGpuSim.adapterInfo().then(function (info) {
+      adapter = info;
+      var badge = el('adapterBadge');
+      if (!info.hasWebGpu) {
+        badge.className = 'badge bad';
+        badge.textContent = 'WebGPU unavailable';
+      } else if (!info.adapter) {
+        badge.className = 'badge bad';
+        badge.textContent = 'WebGPU: no adapter';
+      } else {
+        badge.className = 'badge ok';
+        badge.textContent = 'WebGPU: ' + (info.adapter.vendor || '?') + ' / ' + (info.adapter.architecture || info.adapter.device || 'device');
+      }
+      log('Adapter: ' + JSON.stringify(info));
+      if (/[?&]autorun=1/.test(location.search)) autorun();
+    });
+  })();
+  </script>
+</body>
+</html>

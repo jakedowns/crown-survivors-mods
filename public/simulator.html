@@ -25,6 +25,14 @@
     .sim-dot.paused { background: #e0a526; }
     .sim-dot.stopped { background: #c8452f; }
     .sim-iframe { flex: 1; border: none; width: 100%; background: #2a1d10; }
+    .sim-headless { flex: 1; padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; font-family: monospace; font-size: 11px; overflow: hidden; background: #221a10; }
+    .sim-headless .hl-time { font-size: 20px; color: #ffd23f; font-weight: bold; letter-spacing: .5px; }
+    .sim-headless .hl-hp { height: 8px; background: #1a150d; border: 1px solid #3d2a1a; border-radius: 4px; overflow: hidden; }
+    .sim-headless .hl-hp span { display: block; height: 100%; width: 100%; background: #5fae7a; transition: width .15s linear; }
+    .sim-headless .hl-row { color: #c8a060; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sim-headless .hl-row b { color: #e8d5b8; font-weight: normal; }
+    .sim-headless .hl-items { color: #8b7a60; }
+    .sim-headless .hl-items .evo { color: #c9a0ff; }
     .telemetry-panel { width: 450px; background: #1e160e; border-left: 2px solid #3d2a1a; overflow-y: auto; }
     .panel-header { background: #2a1d10; padding: 12px 16px; border-bottom: 1px solid #3d2a1a; }
     .panel-header h2 { color: #e0a526; font-size: 14px; }
@@ -67,6 +75,11 @@
   <div class="header">
     <h1>⚔️ Crown Survivors - Multi-Instance Simulator</h1>
     <div class="header-controls">
+      <label style="font-size: 12px;">Engine:</label>
+      <select id="engineMode" class="btn" style="padding: 6px 10px;" title="Visual keeps the rendered iframe game; headless runs the authoritative WASM core faster than realtime.">
+        <option value="headless" selected>Headless WASM (fast)</option>
+        <option value="visual">Visual (iframes)</option>
+      </select>
       <label style="font-size: 12px;">Instances:</label>
       <select id="instanceCount" class="btn" style="padding: 6px 10px;">
         <option value="1">1</option>
@@ -99,6 +112,7 @@
       <button class="btn" id="btnAutoAll">🤖 Auto All</button>
       <button class="btn danger" id="btnResetAll">⟳ Reset All</button>
       <button class="btn" id="btnBuildAnalyzer">🧬 Build Analyzer</button>
+      <button class="btn" onclick="window.open('gpu-lab.html','_blank')">🧪 GPU Lab</button>
       <button class="btn" id="btnExport">📊 Export Data</button>
     </div>
   </div>
@@ -144,6 +158,8 @@
           <div class="metric-card"><div class="metric-card-label">Avg Kills</div><div class="metric-card-value" id="aggKills">0</div></div>
           <div class="metric-card"><div class="metric-card-label">Avg Level</div><div class="metric-card-value" id="aggLevel">0</div></div>
           <div class="metric-card"><div class="metric-card-label">Avg Damage</div><div class="metric-card-value" id="aggDamage">0</div></div>
+          <div class="metric-card"><div class="metric-card-label">Dmg Taken</div><div class="metric-card-value" id="aggDmgTaken">0</div></div>
+          <div class="metric-card"><div class="metric-card-label">HP Regained</div><div class="metric-card-value" id="aggHpRegained">0</div></div>
           <div class="metric-card"><div class="metric-card-label">Runs Active</div><div class="metric-card-value" id="aggActive">0</div></div>
           <div class="metric-card"><div class="metric-card-label">Total Kills</div><div class="metric-card-value" id="aggTotalKills">0</div></div>
         </div>
@@ -170,7 +186,7 @@
           <label>Pop <input id="evoPop" type="number" value="8" min="2" max="64"></label>
           <label>Gens <input id="evoGens" type="number" value="5" min="1" max="100"></label>
           <label>Runs <input id="evoRuns" type="number" value="1" min="1" max="20"></label>
-          <label>Limit s <input id="evoTime" type="number" value="180" min="10" max="3600"></label>
+          <label>Limit s <input id="evoTime" type="number" value="600" min="10" max="600"></label>
           <label>Speed
             <select id="evoScale">
               <option value="10">10x</option>
@@ -207,6 +223,18 @@
         <div class="graph-container"><canvas class="graph-canvas" id="levelGraph"></canvas></div>
       </div>
       <div class="panel-section">
+        <h3>Damage Taken Over Time</h3>
+        <div class="graph-container"><canvas class="graph-canvas" id="dmgTakenGraph"></canvas></div>
+      </div>
+      <div class="panel-section">
+        <h3>HP Regained Over Time</h3>
+        <div class="graph-container"><canvas class="graph-canvas" id="hpRegainedGraph"></canvas></div>
+      </div>
+      <div class="panel-section">
+        <h3>Max Time Over Time</h3>
+        <div class="graph-container"><canvas class="graph-canvas" id="maxTimeGraph"></canvas></div>
+      </div>
+      <div class="panel-section">
         <h3>Instance Details</h3>
         <div id="instanceDetails"></div>
       </div>
@@ -217,10 +245,17 @@
     </div>
   </div>
 
+  <script src="sim-pool.js"></script>
   <script>
     let instances = [];
-    const graphs = { dps: [], kills: [], level: [] };
+    const graphs = { dps: [], kills: [], level: [], dmgTaken: [], hpRegained: [], maxTime: [] };
     let instanceData = [];
+
+    // `visual` = legacy iframe game; `headless` = authoritative WASM core in
+    // worker threads. Both feed the same state/telemetry pipeline.
+    let backendMode = 'headless';
+    let pool = null;
+    let poolToken = 0;
 
     const WEAPON_FALLBACK = ['bolt', 'orb', 'rain', 'aura', 'boom', 'zap'];
     const PASSIVE_FALLBACK = ['might', 'tome', 'magnet', 'area', 'armor', 'boots', 'luck', 'heart'];
@@ -230,11 +265,60 @@
       try { frame.contentWindow.postMessage(msg, '*'); } catch (e) {}
     }
 
+    function postToInstance(idx, msg) {
+      if (backendMode === 'headless') {
+        if (pool && pool.ready) pool.send(idx, msg);
+        return;
+      }
+      if (instances[idx]) post(instances[idx], msg);
+    }
+
+    function currentScale() {
+      const el = document.getElementById('globalTimeScale');
+      return el ? (parseFloat(el.value) || 1) : 1;
+    }
+
+    function randomSeed() {
+      return (Math.floor(Math.random() * 0xffffffff) >>> 0) || 1;
+    }
+
+    function destroyPool() {
+      poolToken++;
+      if (pool) {
+        try { pool.terminate(); } catch (e) {}
+        pool = null;
+      }
+    }
+
+    function startPool(count) {
+      const token = ++poolToken;
+      const p = new CrownSimPool(count, {});
+      pool = p;
+      p.onMessage((slot, msg) => {
+        if (pool === p && token === poolToken) handleInstanceMessage(slot, msg);
+      });
+      p.init().then(() => {
+        if (pool !== p || token !== poolToken) return;
+        logEvent(`Headless WASM core ready (${count} worker${count === 1 ? '' : 's'})`, 'success');
+        for (let i = 0; i < count; i++) {
+          if (instanceData[i]) instanceData[i].ready = true;
+          p.send(i, { type: 'setSeed', seed: randomSeed() });
+          p.send(i, { type: 'setSpeed', scale: currentScale() });
+          p.send(i, { type: 'getState' });
+        }
+        p.send(0, { type: 'getMeta' });
+      }).catch((err) => {
+        if (pool !== p || token !== poolToken) return;
+        logEvent(`Headless WASM failed: ${err.message} — switch Engine to Visual`, 'error');
+      });
+    }
+
     function makeInstanceData(name) {
       return {
         name, time: 0, kills: 0, level: 1, damage: 0, hp: 0, maxHp: 0,
+        dmgTaken: 0, hpRegained: 0, bosses: 0, seed: null,
         enemies: 0, active: false, paused: false, over: false, won: false,
-        weapons: [], passives: [], ready: false
+        weapons: [], passives: [], evolutions: [], ready: false
       };
     }
 
@@ -249,17 +333,35 @@
     }
 
     // ---------- instance grid ----------
+    function headlessMarkup(name, i) {
+      return `<div class="sim-instance-header"><span class="sim-instance-name">Instance ${name}</span><span class="sim-status"><span class="sim-dot stopped"></span>Stopped</span></div>
+      <div class="sim-headless" data-headless="${i}">
+        <div class="hl-time">0:00</div>
+        <div class="hl-hp"><span></span></div>
+        <div class="hl-row" data-row="combat">Lv <b>1</b> · Kills <b>0</b> · DMG <b>0</b></div>
+        <div class="hl-row" data-row="world">Enemies <b>0</b> · Bosses <b>0</b> · Seed <b>—</b></div>
+        <div class="hl-row hl-items" data-row="items">—</div>
+      </div>`;
+    }
+
     function updateInstanceGrid(count) {
       const grid = document.getElementById('simGrid');
       grid.innerHTML = '';
       instances = [];
       instanceData = [];
+      destroyPool();
       for (let i = 0; i < count; i++) {
         const name = String.fromCharCode(65 + (i % 26)) + (i >= 26 ? Math.floor(i / 26) : '');
         instanceData.push(makeInstanceData(name));
         const div = document.createElement('div');
         div.className = 'sim-instance';
         div.setAttribute('data-instance', i);
+        if (backendMode === 'headless') {
+          div.innerHTML = headlessMarkup(name, i);
+          grid.appendChild(div);
+          instances.push(null);
+          continue;
+        }
         div.innerHTML = `<div class="sim-instance-header"><span class="sim-instance-name">Instance ${name}</span><span class="sim-status"><span class="sim-dot stopped"></span>Stopped</span></div>`;
         const frame = document.createElement('iframe');
         frame.className = 'sim-iframe';
@@ -276,27 +378,48 @@
         instances.push(frame);
         frame.src = 'index.html';
       }
-      if (count <= 1) {
-        grid.style.gridTemplateColumns = '1fr';
+      // Use percentage-based layout for better responsive behavior
+      // Calculate columns and percentage based on instance count for optimal visualization
+      const gridWidth = grid.parentElement ? grid.parentElement.clientWidth : 800;
+      const gap = 4;
+      
+      if (count === 1) {
+        // Single instance takes full width
+        grid.style.gridTemplateColumns = 'calc(100% - ' + gap + 'px)';
         grid.style.gridTemplateRows = '1fr';
-      } else if (count <= 2) {
-        grid.style.gridTemplateColumns = '1fr 1fr';
+      } else if (count === 2) {
+        // Two instances side by side
+        grid.style.gridTemplateColumns = 'calc(50% - ' + (gap/2) + 'px) calc(50% - ' + (gap/2) + 'px)';
         grid.style.gridTemplateRows = '1fr';
-      } else if (count <= 4) {
-        grid.style.gridTemplateColumns = '1fr 1fr';
-        grid.style.gridTemplateRows = '1fr 1fr';
+      } else if (count === 3) {
+        // Three instances: 33.33% each
+        grid.style.gridTemplateColumns = 'calc(33.33% - ' + (gap/3) + 'px) calc(33.33% - ' + (gap/3) + 'px) calc(33.33% - ' + (gap/3) + 'px)';
+        grid.style.gridTemplateRows = '1fr';
+      } else if (count === 4) {
+        // Four instances: 25% each
+        grid.style.gridTemplateColumns = 'calc(25% - ' + (gap/4) + 'px) calc(25% - ' + (gap/4) + 'px) calc(25% - ' + (gap/4) + 'px) calc(25% - ' + (gap/4) + 'px)';
+        grid.style.gridTemplateRows = '1fr';
       } else if (count <= 6) {
-        grid.style.gridTemplateColumns = '1fr 1fr 1fr';
-        grid.style.gridTemplateRows = '1fr 1fr';
+        // For 5-6 instances: use 3 columns with responsive rows
+        grid.style.gridTemplateColumns = 'calc(33.33% - ' + (gap/3) + 'px) calc(33.33% - ' + (gap/3) + 'px) calc(33.33% - ' + (gap/3) + 'px)';
+        const rows = count <= 4 ? 1 : 2;
+        const rowHeight = rows === 1 ? '1fr' : 'calc(50% - ' + (gap/2) + 'px)';
+        grid.style.gridTemplateRows = rowHeight + ' ' + rowHeight;
       } else if (count <= 9) {
-        grid.style.gridTemplateColumns = '1fr 1fr 1fr';
-        grid.style.gridTemplateRows = '1fr 1fr 1fr';
+        // For 7-9 instances: use 3 columns with 2-3 rows
+        grid.style.gridTemplateColumns = 'calc(33.33% - ' + (gap/3) + 'px) calc(33.33% - ' + (gap/3) + 'px) calc(33.33% - ' + (gap/3) + 'px)';
+        const rows = count <= 6 ? 2 : 3;
+        const rowHeight = 'calc(100% / ' + rows + ' - ' + (gap/rows) + 'px)';
+        grid.style.gridTemplateRows = new Array(rows).fill(rowHeight).join(' ');
       } else {
-        grid.style.gridTemplateColumns = '1fr 1fr 1fr 1fr';
+        // For more instances: use 4 columns with responsive rows
+        grid.style.gridTemplateColumns = 'calc(25% - ' + (gap/4) + 'px) calc(25% - ' + (gap/4) + 'px) calc(25% - ' + (gap/4) + 'px) calc(25% - ' + (gap/4) + 'px)';
         const rows = Math.ceil(count / 4);
-        grid.style.gridTemplateRows = new Array(rows).fill('1fr').join(' ');
+        const rowHeight = 'calc(100% / ' + rows + ' - ' + (gap/rows) + 'px)';
+        grid.style.gridTemplateRows = new Array(rows).fill(rowHeight).join(' ');
       }
       applyAutoScale();
+      if (backendMode === 'headless') startPool(count);
     }
 
     document.getElementById('instanceCount').addEventListener('change', (e) => {
@@ -307,6 +430,18 @@
       }
       updateInstanceGrid(count);
       logEvent(`Instances set to ${count}`, 'warning');
+    });
+
+    document.getElementById('engineMode').addEventListener('change', (e) => {
+      const mode = e.target.value === 'visual' ? 'visual' : 'headless';
+      if (mode === backendMode) return;
+      if (evo.active) {
+        logEvent('Stopping evolution to change engine', 'warning');
+        evoStop();
+      }
+      backendMode = mode;
+      logEvent(`Engine: ${mode === 'visual' ? 'Visual iframes (legacy JS)' : 'Headless WASM (authoritative core)'}`, 'warning');
+      updateInstanceGrid(parseInt(document.getElementById('instanceCount').value) || 4);
     });
 
     // ---------- auto scale ----------
@@ -328,23 +463,30 @@
         else scale = 1;
       }
       document.getElementById('globalTimeScale').value = scale.toString();
-      instances.forEach(f => post(f, { type: 'setTimeScale', scale }));
+      instances.forEach((_, i) => postToInstance(i, { type: 'setTimeScale', scale }));
       logEvent(`Auto-scale (${mode}): ${scale}x for ${count} instances`, 'success');
     }
 
     document.getElementById('autoScale').addEventListener('change', applyAutoScale);
 
     // ---------- messaging ----------
-    window.addEventListener('message', (e) => {
-      const msg = e.data;
+    function handleInstanceMessage(idx, msg) {
       if (!msg || !msg.type) return;
-      let idx = -1;
-      for (let i = 0; i < instances.length; i++) {
-        if (e.source === instances[i].contentWindow) { idx = i; break; }
-      }
-      if (idx < 0) return;
-      if (msg.type === 'state') {
+      if (msg.type === 'state' || msg.type === 'done') {
         handleInstanceState(idx, msg.data || {});
+        if (msg.type === 'done') {
+          const inst = instanceData[idx];
+          if (inst) {
+            inst.active = false;
+            inst.over = true;
+            inst.won = !!(msg.data && msg.data.won);
+            updateInstanceUI(idx);
+            if (!evo.active && !evo.finished) {
+              const outcome = inst.won ? 'WON' : (msg.data && msg.data.timedOut ? 'hit the time limit' : 'died');
+              logEvent(`Instance ${inst.name} ${outcome} at ${Math.floor(inst.time)}s`, inst.won ? 'success' : 'warning');
+            }
+          }
+        }
       } else if (msg.type === 'meta') {
         gameMeta = msg.data || null;
         logEvent(`Received game metadata (${(gameMeta.weapons || []).length} weapons, ${(gameMeta.passives || []).length} passives)`, 'success');
@@ -353,9 +495,23 @@
         }
       } else if (msg.type === 'ready') {
         if (instanceData[idx]) instanceData[idx].ready = true;
-        post(instances[idx], { type: 'getMeta' });
-        post(instances[idx], { type: 'getState' });
+        postToInstance(idx, { type: 'getMeta' });
+        postToInstance(idx, { type: 'getState' });
+      } else if (msg.type === 'error') {
+        const inst = instanceData[idx];
+        logEvent(`Instance ${inst ? inst.name : idx} error: ${msg.error}`, 'error');
       }
+    }
+
+    window.addEventListener('message', (e) => {
+      const msg = e.data;
+      if (!msg || !msg.type) return;
+      let idx = -1;
+      for (let i = 0; i < instances.length; i++) {
+        if (instances[i] && e.source === instances[i].contentWindow) { idx = i; break; }
+      }
+      if (idx < 0) return;
+      handleInstanceMessage(idx, msg);
     });
 
     function handleInstanceState(idx, data) {
@@ -367,43 +523,83 @@
       if (data.damage !== undefined) inst.damage = data.damage;
       if (data.hp !== undefined) inst.hp = data.hp;
       if (data.maxHp !== undefined) inst.maxHp = data.maxHp;
+      if (data.dmgTaken !== undefined) inst.dmgTaken = data.dmgTaken;
+      if (data.hpRegained !== undefined) inst.hpRegained = data.hpRegained;
       if (data.enemies !== undefined) inst.enemies = data.enemies;
+      if (data.bosses !== undefined) inst.bosses = data.bosses;
+      if (data.seed !== undefined) inst.seed = data.seed;
       if (data.running !== undefined) inst.active = data.running;
       if (data.paused !== undefined) inst.paused = data.paused;
-      if (data.over !== undefined) inst.over = data.over;
+      if (data.over !== undefined) inst.over = !!data.over;
       if (data.won !== undefined) inst.won = data.won;
       if (data.weapons) inst.weapons = data.weapons;
       if (data.passives) inst.passives = data.passives;
+      if (data.evolutions) inst.evolutions = data.evolutions;
       updateInstanceUI(idx);
       evoOnState(idx, data);
     }
 
+    function fmtCount(n) {
+      n = Number(n) || 0;
+      if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+      if (n >= 1e4) return (n / 1e3).toFixed(1) + 'k';
+      return Math.floor(n).toLocaleString();
+    }
+
+    function renderHeadless(idx) {
+      const inst = instanceData[idx];
+      const root = document.querySelector(`[data-headless="${idx}"]`);
+      if (!inst || !root) return;
+      const t = Math.max(0, inst.time || 0);
+      root.querySelector('.hl-time').textContent =
+        Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
+      const frac = inst.maxHp > 0 ? Math.max(0, Math.min(1, inst.hp / inst.maxHp)) : 0;
+      const bar = root.querySelector('.hl-hp span');
+      bar.style.width = (frac * 100).toFixed(1) + '%';
+      bar.style.background = frac > 0.5 ? '#5fae7a' : frac > 0.25 ? '#e0a526' : '#c8452f';
+      root.querySelector('[data-row="combat"]').innerHTML =
+        `Lv <b>${inst.level}</b> · Kills <b>${fmtCount(inst.kills)}</b> · DMG <b>${fmtCount(inst.damage)}</b>`;
+      root.querySelector('[data-row="world"]').innerHTML =
+        `Enemies <b>${inst.enemies}</b> · Bosses <b>${inst.bosses || 0}</b> · Seed <b>${inst.seed === null || inst.seed === undefined ? '—' : inst.seed}</b>`;
+      const evo = new Set(inst.evolutions || []);
+      const items = (inst.weapons || []).map(k => evo.has(k) ? `<span class="evo">${k}*</span>` : k)
+        .concat((inst.passives || []).map(k => k));
+      root.querySelector('[data-row="items"]').innerHTML = items.length ? items.join(' · ') : '—';
+    }
+
     function updateInstanceUI(idx) {
       const inst = instanceData[idx];
+      if (backendMode === 'headless') renderHeadless(idx);
       const el = document.querySelector(`.sim-instance[data-instance="${idx}"] .sim-status`);
       if (!el) return;
       const dot = el.querySelector('.sim-dot');
       dot.className = 'sim-dot ' + (inst.over ? 'stopped' : inst.paused ? 'paused' : inst.active ? 'running' : 'stopped');
-      el.lastChild.textContent = inst.over ? 'Dead' : inst.paused ? 'Paused' : inst.active ? 'Running' : 'Stopped';
+      el.lastChild.textContent = inst.over ? (inst.won ? 'Won' : 'Dead') : inst.paused ? 'Paused' : inst.active ? 'Running' : 'Stopped';
     }
 
-    let lastAgg = { damage: 0, kills: 0, wall: 0 };
+    let lastAgg = { damage: 0, kills: 0, level: 0, dmgTaken: 0, hpRegained: 0, wall: 0 };
     function updateAggregates() {
-      let active = 0, totalTime = 0, totalKills = 0, totalLevel = 0, totalDamage = 0;
+      let active = 0, totalTime = 0, totalKills = 0, totalLevel = 0, totalDamage = 0, totalDmgTaken = 0, totalHpRegained = 0;
       instanceData.forEach(inst => {
         if (inst.active && !inst.paused && !inst.over) active++;
-        if (inst.active) {
+        // Include finished runs so averages do not collapse to zero the moment
+        // every instance dies (especially visible with the headless core).
+        if (inst.active || inst.over || inst.time > 0) {
           totalTime += inst.time;
           totalKills += inst.kills;
           totalLevel += inst.level;
           totalDamage += inst.damage;
+          totalDmgTaken += inst.dmgTaken;
+          totalHpRegained += inst.hpRegained;
         }
       });
-      const count = instanceData.filter(i => i.active).length || 1;
+      const count = instanceData.filter(i => i.active || i.over || i.time > 0).length || 1;
       document.getElementById('aggTime').textContent = Math.floor(totalTime / count / 60) + ':' + String(Math.floor((totalTime / count) % 60)).padStart(2, '0');
       document.getElementById('aggKills').textContent = Math.floor(totalKills / count);
       document.getElementById('aggLevel').textContent = (totalLevel / count).toFixed(1);
       document.getElementById('aggDamage').textContent = Math.floor(totalDamage / count).toLocaleString();
+      document.getElementById('aggDmgTaken').textContent = Math.floor(totalDmgTaken / count).toLocaleString();
+      document.getElementById('aggHpRegained').textContent = Math.floor(totalHpRegained / count).toLocaleString();
       document.getElementById('aggActive').textContent = active + '/' + instanceData.length;
       document.getElementById('aggTotalKills').textContent = totalKills.toLocaleString();
 
@@ -413,18 +609,35 @@
       graphs.dps.push(Math.max(0, totalDamage - lastAgg.damage) / dtSec);
       graphs.kills.push(Math.max(0, totalKills - lastAgg.kills) / dtSec);
       graphs.level.push(totalLevel / count);
-      lastAgg = { damage: totalDamage, kills: totalKills, wall: nowWall };
-      if (graphs.dps.length > 60) { graphs.dps.shift(); graphs.kills.shift(); graphs.level.shift(); }
+      graphs.dmgTaken.push(Math.max(0, totalDmgTaken - lastAgg.dmgTaken) / dtSec);
+      graphs.hpRegained.push(Math.max(0, totalHpRegained - lastAgg.hpRegained) / dtSec);
+      
+      // Max time over all instances - excellent signal for how well the group is performing
+      const maxTime = Math.max(...instanceData.map(i => i.time));
+      graphs.maxTime.push(maxTime);
+      
+      lastAgg = { damage: totalDamage, kills: totalKills, level: totalLevel, dmgTaken: totalDmgTaken, hpRegained: totalHpRegained, wall: nowWall };
+      if (graphs.dps.length > 60) { 
+        graphs.dps.shift(); 
+        graphs.kills.shift(); 
+        graphs.level.shift(); 
+        graphs.dmgTaken.shift(); 
+        graphs.hpRegained.shift(); 
+        graphs.maxTime.shift(); 
+      }
       drawGraph('dpsGraph', graphs.dps, '#c8452f');
       drawGraph('killsGraph', graphs.kills, '#5fae7a');
       drawGraph('levelGraph', graphs.level, '#6ab0ff');
+      drawGraph('dmgTakenGraph', graphs.dmgTaken, '#e0a526');
+      drawGraph('hpRegainedGraph', graphs.hpRegained, '#4a90e2');
+      drawGraph('maxTimeGraph', graphs.maxTime, '#ff6b6b');
 
       // Update instance details
       const details = document.getElementById('instanceDetails');
       details.innerHTML = instanceData.map((inst, i) =>
         `<div style="background:#2a1d10;padding:6px 8px;margin-bottom:4px;border-radius:4px;font-size:11px;display:flex;justify-content:space-between;">
           <span style="color:#e0a526;">${inst.name}${inst.over ? ' ☠' : ''}</span>
-          <span>T:${Math.floor(inst.time / 60)}:${String(Math.floor(inst.time % 60)).padStart(2, '0')} K:${inst.kills} L:${inst.level} HP:${Math.floor(inst.hp)}/${Math.floor(inst.maxHp)}</span>
+          <span>T:${Math.floor(inst.time / 60)}:${String(Math.floor(inst.time % 60)).padStart(2, '0')} K:${inst.kills} L:${inst.level} HP:${Math.floor(inst.hp)}/${Math.floor(inst.maxHp)} DT:${inst.dmgTaken} HR:${inst.hpRegained}</span>
         </div>`
       ).join('');
     }
@@ -452,35 +665,35 @@
     // ---------- controls ----------
     document.getElementById('globalTimeScale').addEventListener('change', (e) => {
       const scale = parseFloat(e.target.value);
-      instances.forEach(f => post(f, { type: 'setTimeScale', scale }));
+      instances.forEach((_, i) => postToInstance(i, { type: 'setTimeScale', scale }));
       logEvent(`Global time scale: ${scale >= 999 ? 'MAX' : scale + 'x'}`, 'warning');
     });
 
     document.getElementById('btnStartAll').addEventListener('click', () => {
-      instances.forEach((f, i) => {
-        post(f, { type: 'start' });
+      instances.forEach((_, i) => {
+        postToInstance(i, { type: 'start' });
         if (instanceData[i]) { instanceData[i].active = true; instanceData[i].over = false; }
       });
       logEvent('Started all instances', 'success');
     });
 
     document.getElementById('btnPauseAll').addEventListener('click', () => {
-      instances.forEach((f, i) => {
-        post(f, { type: 'pause' });
+      instances.forEach((_, i) => {
+        postToInstance(i, { type: 'pause' });
         if (instanceData[i]) instanceData[i].paused = true;
       });
       logEvent('Paused all instances', 'warning');
     });
 
     document.getElementById('btnAutoAll').addEventListener('click', () => {
-      instances.forEach(f => post(f, { type: 'auto', enabled: true }));
+      instances.forEach((_, i) => postToInstance(i, { type: 'auto', enabled: true }));
       logEvent('Enabled auto-play on all instances', 'success');
     });
 
     document.getElementById('btnResetAll').addEventListener('click', () => {
       const count = parseInt(document.getElementById('instanceCount').value);
       updateInstanceGrid(count);
-      graphs.dps = []; graphs.kills = []; graphs.level = [];
+      graphs.dps = []; graphs.kills = []; graphs.level = []; graphs.dmgTaken = []; graphs.hpRegained = []; graphs.maxTime = [];
       logEvent('Reset all instances', 'error');
     });
 
@@ -565,7 +778,7 @@
       const editor = document.getElementById('buildProfileEditor');
       if (val === 'default') {
         editor.style.display = 'none';
-        instances.forEach(f => post(f, { type: 'setBuildProfile', profile: null }));
+        instances.forEach((_, i) => postToInstance(i, { type: 'setBuildProfile', profile: null }));
         logEvent('Build profile: Default (Random)', 'warning');
         return;
       }
@@ -579,14 +792,14 @@
       const order = PRESET_ORDERS[val];
       const profile = { name: val, ranks: ranksFromOrder(order), weights: {} };
       currentProfile = profile;
-      instances.forEach(f => post(f, { type: 'setBuildProfile', profile }));
+      instances.forEach((_, i) => postToInstance(i, { type: 'setBuildProfile', profile }));
       logEvent(`Build profile applied: ${val}`, 'success');
     });
 
     document.getElementById('btnApplyBuildProfile').addEventListener('click', () => {
       const p = readProfileEditor();
       currentProfile = { name: 'custom', ranks: p.ranks, weights: p.weights };
-      instances.forEach(f => post(f, { type: 'setBuildProfile', profile: currentProfile }));
+      instances.forEach((_, i) => postToInstance(i, { type: 'setBuildProfile', profile: currentProfile }));
       logEvent('Custom build profile applied to all instances', 'success');
     });
 
@@ -721,7 +934,7 @@
       const sel = document.getElementById('globalTimeScale');
       const str = scale >= 999 ? '999' : scale >= 100 ? '100' : scale.toString();
       if ([...sel.options].some(o => o.value === str)) sel.value = str;
-      instances.forEach(f => post(f, { type: 'setTimeScale', scale }));
+      instances.forEach((_, i) => postToInstance(i, { type: 'setTimeScale', scale }));
     }
 
     function evoStart() {
@@ -731,7 +944,7 @@
         pop: clamp(Math.round(numVal('evoPop', 8)), 2, 64),
         gens: clamp(Math.round(numVal('evoGens', 5)), 1, 100),
         runs: clamp(Math.round(numVal('evoRuns', 1)), 1, 20),
-        limit: clamp(Math.round(numVal('evoTime', 180)), 10, 3600),
+        limit: clamp(Math.round(numVal('evoTime', 600)), 10, 600),
         scale: numVal('evoScale', 100),
         seedBase: clamp(Math.round(numVal('evoSeed', 12345)), 0, 2147483647),
         wTime: numVal('fitTime', 1),
@@ -803,15 +1016,17 @@
       slot.runStart = Date.now();
       slot.fresh = false;
       slot.last = null;
-      const f = instances[idx];
       // Same seed set for every candidate => paired, low-variance comparisons.
       const runIndex = cand.runs.length;
-      const seed = cfg.seedBase ? (cfg.seedBase + runIndex) >>> 0 : 0;
-      post(f, { type: 'setBuildProfile', profile: { name: 'evo-' + cand.id, ranks: cand.ranks, weights: cand.weights } });
-      post(f, { type: 'setTimeScale', scale: cfg.scale });
-      post(f, { type: 'setSeed', seed });
-      post(f, { type: 'setTimeLimit', limit: cfg.limit });
-      post(f, { type: 'reset', auto: true });
+      let seed = cfg.seedBase ? (cfg.seedBase + runIndex) >>> 0 : 0;
+      // Seed 0 means "unseeded" in the legacy protocol; the core treats every
+      // seed as deterministic, so draw a fresh one for headless runs.
+      if (!seed && backendMode === 'headless') seed = randomSeed();
+      postToInstance(idx, { type: 'setBuildProfile', profile: { name: 'evo-' + cand.id, ranks: cand.ranks, weights: cand.weights } });
+      postToInstance(idx, { type: 'setTimeScale', scale: cfg.scale });
+      postToInstance(idx, { type: 'setSeed', seed });
+      postToInstance(idx, { type: 'setTimeLimit', limit: cfg.limit });
+      postToInstance(idx, { type: 'reset', auto: true });
       evo.totalRuns++;
     }
 
@@ -822,13 +1037,16 @@
       const cfg = evo.config;
       slot.last = data;
       const elapsed = Date.now() - slot.runStart;
-      if (!slot.fresh) {
-        if ((data.time || 0) < 5 && !data.over) slot.fresh = true;
-        else if (elapsed < 2500) return;
-      }
       const timedOut = (data.time || 0) >= cfg.limit;
-      if (data.over || timedOut) {
+      // A terminal state always counts, even if the run finished faster than
+      // the iframe-oriented "fresh start" grace period below.
+      if (data.over || data.ended || timedOut) {
         evoFinishRun(idx, data, timedOut);
+        return;
+      }
+      if (!slot.fresh) {
+        if ((data.time || 0) < 5) slot.fresh = true;
+        else if (elapsed < 2500) return;
       }
     }
 
@@ -879,7 +1097,10 @@
           runs: c.runs.map(r => Object.assign({}, r)),
           avgTime: c.runs.reduce((a, r) => a + r.time, 0) / c.runs.length,
           avgKills: c.runs.reduce((a, r) => a + r.kills, 0) / c.runs.length,
-          avgLevel: c.runs.reduce((a, r) => a + r.level, 0) / c.runs.length
+          avgLevel: c.runs.reduce((a, r) => a + r.level, 0) / c.runs.length,
+          avgWins: c.runs.reduce((a, r) => a + (r.won ? 1 : 0), 0) / c.runs.length,
+          avgDmgTaken: c.runs.reduce((a, r) => a + (r.dmgTaken || 0), 0) / c.runs.length,
+          avgHpRegained: c.runs.reduce((a, r) => a + (r.hpRegained || 0), 0) / c.runs.length
         }))
       });
       logEvent(`Gen ${evo.gen + 1} best fitness: ${best.fitness.toFixed(1)} (best build #${best.id})`, 'success');
@@ -898,9 +1119,9 @@
       evo.finished = !!finished;
       evo.queue = [];
       evo.slots.forEach(s => { s.running = false; s.cand = null; });
-      if (wasActive) instances.forEach(f => {
-        post(f, { type: 'setTimeLimit', limit: 0 });
-        post(f, { type: 'setSeed', seed: 0 });
+      if (wasActive) instances.forEach((_, i) => {
+        postToInstance(i, { type: 'setTimeLimit', limit: 0 });
+        postToInstance(i, { type: 'setSeed', seed: 0 });
       });
       document.getElementById('btnEvoStart').disabled = false;
       document.getElementById('btnEvoStop').disabled = true;
@@ -968,7 +1189,7 @@
           document.getElementById('buildProfileSelect').value = 'custom';
           document.getElementById('buildProfileEditor').style.display = 'block';
           renderProfileEditor(b.ranks, b.weights);
-          instances.forEach(f => post(f, { type: 'setBuildProfile', profile: currentProfile }));
+          instances.forEach((_, i) => postToInstance(i, { type: 'setBuildProfile', profile: currentProfile }));
           logEvent(`Applied gen ${g} build #${idx + 1} to all instances`, 'success');
         });
       });

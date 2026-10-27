@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>GPU PROBE PENDING</title></head>
+<body><pre id="out">pending</pre>
+<script>
+(async () => {
+  const out = { hasGpu: !!navigator.gpu, secure: window.isSecureContext };
+  function show() {
+    document.getElementById('out').textContent = JSON.stringify(out, null, 2);
+    document.title = 'GPU PROBE DONE';
+  }
+  if (!navigator.gpu) { show(); return; }
+  for (const opts of [
+    { powerPreference: 'high-performance' },
+    { forceFallbackAdapter: true },
+    { powerPreference: 'low-power' }
+  ]) {
+    try {
+      const a = await navigator.gpu.requestAdapter(opts);
+      const rec = {
+        opts,
+        got: !!a,
+        info: a && a.info ? {
+          vendor: a.info.vendor,
+          architecture: a.info.architecture,
+          device: a.info.device,
+          description: a.info.description
+        } : null,
+        features: a ? [...a.features] : []
+      };
+      if (a) {
+        const d = await a.requestDevice();
+        rec.device = !!d;
+        const buf = d.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+        rec.buffer = !!buf;
+      }
+      out[opts.forceFallbackAdapter ? 'fallback' : opts.powerPreference || 'default'] = rec;
+    } catch (e) {
+      out[opts.forceFallbackAdapter ? 'fallback' : opts.powerPreference || 'default'] = { error: String(e && e.message || e) };
+    }
+  }
+  show();
+})().catch(e => {
+  document.getElementById('out').textContent = 'FATAL ' + String(e && e.stack || e);
+  document.title = 'GPU PROBE DONE';
+});
+</script>
+</body>
+</html>

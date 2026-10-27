@@ -1226,14 +1226,16 @@ const ic = document.createElement('canvas');
         if (c.k === 'hp') {
           const v = (G.inf.hp > INF.hp.cap ? 6 : 12);
           G.p.mhp += v;
-          G.p.hp = Math.min(G.p.mhp, G.p.hp + 20 + v)
+          G.p.hp = Math.min(G.p.mhp, G.p.hp + 20 + v);
+          G.hpRegained = (G.hpRegained || 0) + 20 + v
         }
       } else if (c.kind === 'w') G.w[c.k] = c.lv;
       else if (c.kind === 'p') {
         G.ps[c.k] = c.lv;
         if (c.k === 'heart') {
           G.p.mhp += 20;
-          G.p.hp = Math.min(G.p.mhp, G.p.hp + 30)
+          G.p.hp = Math.min(G.p.mhp, G.p.hp + 30);
+          G.hpRegained = (G.hpRegained || 0) + 30
         }
       } else if (c.kind === 'm') {
         if (c.k === 'dash') {
@@ -1254,6 +1256,7 @@ const ic = document.createElement('canvas');
         shake = 8
       } else if (c.k === 'gold') G.gold += 25;
       else G.p.hp = Math.min(G.p.mhp, G.p.hp + G.p.mhp * .3);
+          G.hpRegained = (G.hpRegained || 0) + G.p.mhp * .3;
       sfx.pick();
       vib(15);
       ringFx(G.p.x, G.p.y, '#ffd23f', 80);
@@ -1446,6 +1449,7 @@ const ic = document.createElement('canvas');
       const p = G.p;
       if (p.inv > 0 || G.god || G.won) return;
       d = Math.max(1, d - SC.armor);
+      G.dmgTaken = (G.dmgTaken || 0) + d;
       p.hp -= d;
       p.inv = .6;
       G.flash = .35;
